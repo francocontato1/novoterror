@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ponto Cego</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Special+Elite&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<!-- HUD estilo câmera corporal -->
+<div id="hud" class="hidden">
+  <div id="rec"><span class="dot"></span>REC</div>
+  <div id="camid">PMMG · CAM 07 · CB DUARTE</div>
+  <div id="stamp">14/03/2003 02:47:13</div>
+  <div id="batt"><i></i><i></i><i></i></div>
+  <div id="objective"><small>OBJETIVO</small><span></span></div>
+  <div id="ammo"><b>6</b><span>/ 12</span></div>
+  <div id="flashc"><span>FLASH</span><i><em></em></i></div>
+  <div id="cross"></div>
+  <div id="prompt"></div>
+  <div id="hold"><i></i></div>
+  <div id="subs"></div>
+</div>
+
+<div id="note" class="hidden"><div class="paper"><div class="txt"></div><div class="hint">[E] fechar</div></div></div>
+
+<div id="title">
+  <div class="inner">
+    <div class="file">INQUÉRITO 0347/2003 · MATERIAL AUDIOVISUAL RECUPERADO</div>
+    <h1>PONTO CEGO</h1>
+    <p class="tag">Algumas dívidas não morrem com quem as fez.</p>
+    <button id="start">INICIAR GRAVAÇÃO</button>
+    <div class="ctrl">
+      <span><b>WASD</b> mover</span><span><b>SHIFT</b> correr</span><span><b>MOUSE</b> olhar</span>
+      <span><b>CLIQUE</b> atirar</span><span><b>R</b> recarregar</span><span><b>Q / BOTÃO DIREITO</b> flash da câmera</span>
+      <span><b>E</b> interagir</span><span><b>F</b> lanterna</span>
+    </div>
+    <p class="warn">Use fones de ouvido. Apague a luz. Contém sangue, violência e imagens perturbadoras.</p>
+    <p class="warn small">O flash atordoa o que se esconde no escuro e revela o que os olhos não veem.</p>
+  </div>
+</div>
+
+<div id="cards" class="hidden"><p></p></div>
+<div id="pause" class="hidden"><div>PAUSADO<small>clique para continuar</small></div></div>
+<div id="dead" class="hidden"><div><h2>SINAL PERDIDO</h2><small>clique para retomar da última gravação</small></div></div>
+<div id="black" class="hidden"></div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
