@@ -134,9 +134,9 @@ export class Player {
     const ray = new THREE.Ray(cam.position.clone(), cam.userData.fwd.clone());
     ray.direction.x += (Math.random() - 0.5) * 0.012; ray.direction.y += (Math.random() - 0.5) * 0.012; ray.direction.normalize();
     let best = null, bestC = null;
-    for (const c of this.g.creatures) { const h = c.hitBy(ray); if (h && (!best || h.distance < best.distance)) { best = h; bestC = c; } }
+    for (const c of this.g.creatures) { const h = c.hitBy(ray, 0.05); if (h && (!best || h.distance < best.distance)) { best = h; bestC = c; } }
     const wallHit = new THREE.Raycaster(ray.origin, ray.direction, 0, 60).intersectObjects(this.g.level.occluders, false)[0];
-    if (best && (!wallHit || best.distance < wallHit.distance)) { bestC.hurt(best); this.g.audio.fleshHit(best.point); }
+    if (best && (!wallHit || best.distance < wallHit.distance + 0.3)) { bestC.hurt(best); this.g.audio.fleshHit(best.point); this.g.hitMarker && this.g.hitMarker(); }
     else if (wallHit) this.g.bulletHole(wallHit);
   }
   reload() {
@@ -188,12 +188,14 @@ export class Player {
       if (K.KeyW || K.ArrowUp) fz += 1; if (K.KeyS || K.ArrowDown) fz -= 1;
       if (K.KeyA || K.ArrowLeft) fx -= 1; if (K.KeyD || K.ArrowRight) fx += 1;
     }
-    const moving = fx || fz;
-    const run = moving && (K.ShiftLeft || K.ShiftRight) && this.stamina > 0.05 && fz > 0;
+    const TS = G.touchState;
+    if (TS && !this.frozen && !G.noteOpen) { fx += TS.x; fz -= TS.y; }
+    const moving = Math.hypot(fx, fz) > 0.15;
+    const run = moving && (K.ShiftLeft || K.ShiftRight || (TS && TS.run)) && this.stamina > 0.05 && fz > 0;
     const sp = run ? 3.5 : 1.55;
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     let wx = -sin * fz + cos * fx, wz = -cos * fz - sin * fx;
-    const wl = Math.hypot(wx, wz) || 1; wx /= wl; wz /= wl;
+    const wl = Math.max(1, Math.hypot(wx, wz)); wx /= wl; wz /= wl;
     const acc = moving ? 10 : 8;
     this.vel.x += ((moving ? wx * sp : 0) - this.vel.x) * Math.min(1, dt * acc);
     this.vel.z += ((moving ? wz * sp : 0) - this.vel.z) * Math.min(1, dt * acc);
@@ -291,7 +293,7 @@ export class Player {
     this.flashPoint.intensity = G.flashT > 0 ? 900 * (G.flashT / 0.18) : 0;
 
     // vida regenera devagar
-    if (this.hurtT > 6) this.health = Math.min(100, this.health + dt * 6);
+    if (this.hurtT > 4) this.health = Math.min(100, this.health + dt * 10);
     this.damageFx = Math.max(this.damageFx - dt * 1.2, (100 - this.health) / 100 * 0.6);
   }
 

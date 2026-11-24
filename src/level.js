@@ -104,6 +104,9 @@ export function buildLevel(game) {
   ov('mud', P('brown_mud_leaves_01', 3.2, 5, { rough: 0.7, env: 0.6 }));
   M.roof = P('clay_roof_tiles', 2.0, 2.0, { color: 0x9a8a80 });
   M.carpet = P('dirty_carpet', 1.4, 1.3, { color: 0x9a6a5a });
+  M.trim = M.darkWood;
+  M.curtain = new THREE.MeshStandardMaterial({ map: T.cloth(52, [150, 128, 100], 0.25), roughness: 0.95, side: THREE.DoubleSide, color: 0xc8b8a0 });
+  M.shade = new THREE.MeshStandardMaterial({ map: T.cloth(53, [190, 170, 130], 0.15), roughness: 0.9, side: THREE.DoubleSide, emissive: 0x000000 });
   M.ceramic = new THREE.MeshPhysicalMaterial({ map: T.plaster(23), color: 0xf0eee6, roughness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.2, envMap: env, envMapIntensity: 0.6 });
   // coloca modelo com colisor opcional
   const model = (name, x, y, z, ry = 0, o = {}) => {
@@ -167,6 +170,14 @@ export function buildLevel(game) {
       const m = new THREE.Mesh(geo, mats);
       const x = axis === 'x' ? mid : c, z = axis === 'x' ? c : mid;
       m.position.set(x, y0 + s.lo + hh / 2, z); m.castShadow = true; m.receiveShadow = true; group.add(m);
+      if (y0 === 0 && s.lo === 0 && !o.noTrim) {
+        for (const [face, mat] of [[1, mats[axis === 'x' ? 4 : 0]], [-1, mats[axis === 'x' ? 5 : 1]]]) {
+          if (mat === M.ext || mat === M.conc) continue;
+          const bw = axis === 'x' ? len : 0.016, bd = axis === 'x' ? 0.016 : len;
+          const bb = new THREE.Mesh(new THREE.BoxGeometry(bw, 0.095, bd), M.trim);
+          bb.position.set(axis === 'x' ? x : x + face * (TH / 2 + 0.008), 0.048, axis === 'x' ? z + face * (TH / 2 + 0.008) : z); bb.receiveShadow = true; group.add(bb);
+        }
+      }
       addCol(x - w / 2, x + w / 2, y0 + s.lo, y0 + s.hi, z - d / 2, z + d / 2);
       L.occluders.push(m);
     }
@@ -188,6 +199,22 @@ export function buildLevel(game) {
         addCol(c - 0.1, c + 0.1, y0, y0 + op.top, op.a, op.b);
       }
       L.windows = L.windows || []; L.windows.push(g);
+      if (y0 === 0) for (const [face, mat] of [[1, mats[axis === 'x' ? 4 : 0]], [-1, mats[axis === 'x' ? 5 : 1]]]) {
+        if (mat === M.ext) continue;
+        const off = TH / 2 + 0.07, top = y0 + op.top + 0.14, ch = op.top - op.bottom + 0.45;
+        const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, len + 0.5, 8), M.metal); rod.rotation.z = Math.PI / 2; if (axis === 'z') rod.rotation.set(Math.PI / 2, 0, 0);
+        rod.position.set(axis === 'x' ? mid : c + face * off, top + 0.02, axis === 'x' ? c + face * off : mid); group.add(rod);
+        for (const side of [-1, 1]) {
+          const cw = len * (0.32 + Math.random() * 0.12), geo = new THREE.PlaneGeometry(cw, ch, 18, 6), pp = geo.attributes.position;
+          for (let i = 0; i < pp.count; i++) { const u = pp.getX(i) / cw + 0.5, vv = (pp.getY(i) / ch + 0.5); pp.setZ(i, Math.sin(u * Math.PI * 7) * 0.035 + Math.sin(u * 23) * 0.006 - (1 - vv) * 0.02 * side); }
+          geo.computeVertexNormals();
+          const cm = new THREE.Mesh(geo, M.curtain);
+          const along = mid + side * (len / 2 + 0.25 - cw / 2);
+          if (axis === 'x') { cm.position.set(along, top - ch / 2, c + face * off); cm.rotation.y = face > 0 ? 0 : Math.PI; }
+          else { cm.position.set(c + face * off, top - ch / 2, along); cm.rotation.y = face > 0 ? Math.PI / 2 : -Math.PI / 2; }
+          cm.castShadow = true; cm.receiveShadow = true; group.add(cm);
+        }
+      }
     }
   }
   const win = (a, b) => ({ a, b, bottom: 0.95, top: 2.1, window: true });
@@ -243,6 +270,7 @@ export function buildLevel(game) {
     const b = new THREE.Mesh(new THREE.LatheGeometry(bp, 16), bm); b.position.set(x, y - 0.46, z); group.add(b);
     const fil = new THREE.Mesh(new THREE.TorusGeometry(0.008, 0.0012, 4, 12, Math.PI), new THREE.MeshBasicMaterial({ color: 0x331a00 })); fil.position.set(x, y - 0.535, z); group.add(fil);
     const light = new THREE.PointLight(0xffc890, 0, o.dist ?? 7, 2); light.position.set(x, y - 0.55, z); group.add(light);
+    if (!o.noShade) { const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.2, 0.2, 20, 1, true), M.shade.clone()); sh.position.set(x, y - 0.52, z); sh.castShadow = false; group.add(sh); bm.userData.shade = sh; }
     const B = { light, mat: bm, base: (o.power ?? 7) * 2.6, room, flicker: 0, dead: false, pos: V(x, y - 0.5, z) };
     L.bulbs.push(B); return B;
   }
@@ -353,7 +381,7 @@ export function buildLevel(game) {
   if (!model('plastic_monobloc_chair_01', 11.5, 0, -1.1, 2.6, { col: true, dirty: 0.75 })) box(0.6, 0.45, 0.6, M.darkWood, 11.5, 0, -1, { col: true, tile: 0.6 });
   model('rubber_boots', 4.6, 0, -0.35, 0.4); model('rubber_boots', 4.85, 0, -0.3, -0.2);
   model('trashbag', 13.6, 0, -0.6, 1.0, { dirty: 0.7 });
-  const porchBulb = bulb(6, -1.2, 'porch', { y: 2.55, power: 0 });
+  const porchBulb = bulb(6, -1.2, 'porch', { y: 2.55, power: 0, noShade: true });
   porchBulb.dead = true;
 
   // ---------- SALA ----------
@@ -401,10 +429,15 @@ export function buildLevel(game) {
   // rastro de sangue até o corredor
   for (let i = 0; i < 7; i++) floorDecal(T.bloodSplat(10 + i, 'smear'), 0.9, 5.1 - i * 0.18, 4.9 + i * 0.17, 0.007 + i * 0.0005, -0.8 + (Math.random() - 0.5) * 0.4);
   // retrato da avó (olhos queimados)
-  const gp = plane(0.5, 0.65, new THREE.MeshStandardMaterial({ map: T.grannyPortrait(), roughness: 0.4 }), 0.085, 1.75, 2.2, 0, Math.PI / 2, 0);
-  box(0.04, 0.72, 0.57, M.darkWood, 0.09, 1.39, 2.2);
-  gp.position.x = 0.115;
-  interact(V(0.3, 1.7, 2.2), 'Examinar retrato', () => game.story.event('granny'));
+  const frame = A && A.models.hanging_picture_frame_01 ? A.models.hanging_picture_frame_01.clone(true) : null;
+  if (frame) {
+    frame.traverse((q) => { if (q.isMesh && q.material.name && q.material.name.endsWith('artwork')) { q.material = q.material.clone(); q.material.map = T.grannyPortrait(); q.material.map.flipY = false; q.material.map.needsUpdate = true; } });
+    frame.position.set(0.078, 1.72, 4.6); frame.rotation.y = Math.PI / 2; frame.scale.setScalar(0.82); group.add(frame);
+  } else {
+    const gp = plane(0.5, 0.65, new THREE.MeshStandardMaterial({ map: T.grannyPortrait(), roughness: 0.4 }), 0.115, 1.75, 4.6, 0, Math.PI / 2, 0);
+    box(0.04, 0.72, 0.57, M.darkWood, 0.09, 1.39, 4.6);
+  }
+  interact(V(0.3, 1.7, 4.6), 'Examinar retrato', () => game.story.event('granny'));
   // crucifixo invertido
   box(0.04, 0.5, 0.04, M.darkWood, 1.6, 1.45, 5.9); box(0.3, 0.04, 0.04, M.darkWood, 1.6, 1.55, 5.9);
   // foto da família
@@ -797,6 +830,7 @@ export function buildLevel(game) {
       if (B.flicker > 0) { B.flicker -= dt; k *= Math.random() < 0.5 ? 0.05 : 1; }
       B.light.intensity = B.base * k;
       B.mat.emissiveIntensity = k * 6;
+      if (B.mat.userData.shade) B.mat.userData.shade.material.emissive.setRGB(0.5 * k, 0.38 * k, 0.22 * k);
     }
     L.updaters.forEach(f => f(dt, t));
   };

@@ -6,14 +6,15 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 
 const BodycamShader = {
   uniforms: {
     tDiffuse: { value: null },
     time: { value: 0 },
     res: { value: new THREE.Vector2(1, 1) },
-    distort: { value: 0.22 },
-    chroma: { value: 0.012 },
+    distort: { value: 0.1 },
+    chroma: { value: 0.0045 },
     grain: { value: 0.07 },
     flash: { value: 0 },
     damage: { value: 0 },
@@ -83,8 +84,13 @@ export function createPost(renderer, scene, camera) {
   const size = renderer.getSize(new THREE.Vector2());
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const after = new AfterimagePass(0.38);
-  composer.addPass(after);
+  // oclusão de ambiente (sombras de contato) — só na qualidade alta
+  const ao = new GTAOPass(scene, camera, size.x, size.y);
+  ao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1.1, samples: 12 });
+  ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+  ao.blendIntensity = 1.0;
+  composer.addPass(ao);
+  const after = new AfterimagePass(0.0); after.enabled = false;
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.4, 0.55, 0.85);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
@@ -92,7 +98,7 @@ export function createPost(renderer, scene, camera) {
   composer.addPass(cam);
   const u = cam.uniforms;
   const api = {
-    composer, u, after, bloom,
+    composer, u, after, bloom, ao,
     setSize(w, h, pr) { composer.setPixelRatio(pr); composer.setSize(w, h); u.res.value.set(w * pr, h * pr); },
     render(dt, t) { u.time.value = t; composer.render(dt); },
   };

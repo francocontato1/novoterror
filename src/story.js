@@ -65,6 +65,7 @@ export class Story {
         this.placeFather();
         G.tensionBase = 0.2;
         G.objective('Atender o telefone (sala)');
+        if (this.ring) this.ring.stop();
         this.ring = A().loop('phone', L().props.phone.pos, 1.3);
         this.flags.phoneAnswered = false;
       },
@@ -120,11 +121,32 @@ export class Story {
           G.mother.pos.set(1.0 + g * 0.5, 2.68, 6.4 + g * 3.2); G.mother.yaw = 0.2; G.mother.pose(G.time, 1); G.mother.sync();
           if (g > 0.6) { G.mother.show(false); G.mother.setState('hidden'); this.glimpse = null; this.after(1.2, () => G.say('VOCÊ', 'Que porra foi essa...', 2, 'self')); }
         }
-        // 5. o pai no canto do quarto
-        if (!this.flags.sawFather && room === 'casal' && G.father.isSeen()) {
+        // 5. o pai no canto do quarto: bate a testa na parede, devagar, sem parar
+        const F = G.father, FP = F.P, fhead = F.pos.clone().setY(1.7);
+        if (F.active && F.state === 'idle' && !this.flags.fatherTurned) {
+          this.knockT = (this.knockT ?? 1) - dt;
+          if (this.knockT <= 0) {
+            this.knockT = 1.9 + Math.random() * 0.3; this.knockAnim = 0;
+            const d = A().dest(V(5.75, 1.75, 11.75), { verb: 0.7, gain: 1.1 }); A().tone(d, { f: 95, fEnd: 55, dur: 0.18, peak: 1 }); A().noiseBurst(d, { dur: 0.06, type: 'lowpass', f: 900, peak: 0.7, buf: A().brown });
+          }
+          if (this.knockAnim !== undefined) { this.knockAnim += dt; const k = this.knockAnim; FP.spine.rotation.x = 0.12 + (k < 0.12 ? k / 0.12 : Math.max(0, 1 - (k - 0.12) / 0.6)) * 0.22; FP.neck.rotation.x = 0.35 + (k < 0.12 ? k / 0.12 : Math.max(0, 1 - (k - 0.12) / 0.6)) * 0.35; }
+        }
+        if (!this.flags.sawFather && room === 'casal' && F.isSeen()) {
           this.flags.sawFather = true; G.tensionBase = 0.45;
           this.after(0.6, () => G.say('VOCÊ', 'Seu Antônio? ...O senhor tá ferido?', 3, 'self'));
-          this.after(4, () => A().whisper(G.father.chest().clone(), 2.5, 0.7));
+        }
+        // chegou perto: as batidas param e a cabeça gira para trás, olhando para você
+        if (this.flags.sawFather && !this.flags.fatherTurned && Math.hypot(p.x - F.pos.x, p.z - F.pos.z) < 3.1) {
+          this.flags.fatherTurned = true; this.headTurn = 0;
+          FP.spine.rotation.x = 0.12; FP.neck.rotation.x = 0.35;
+          this.after(1.4, () => { A().boneCrack(fhead, 3); A().play('groanM', fhead, { vol: 1.2, verb: 0.5 }); });
+        }
+        if (this.headTurn !== undefined && this.headTurn < 1) {
+          if (this.headTurn > 0 || this.stepT > 0) this.headTurn = Math.min(1, this.headTurn + dt / 3.2);
+          const k = Math.max(0, (this.headTurn - 0.35) / 0.65);
+          FP.head.rotation.y = Math.PI * (k < 1 ? k * k * (3 - 2 * k) : 1) * 0.98;
+          if (k > 0.45 && !this.flags.turnCrack) { this.flags.turnCrack = true; A().boneCrack(fhead, 2); }
+          if (this.headTurn >= 1) { A().whisper(fhead, 2.5, 0.8); }
         }
         // 6. pegou o fusível, virou as costas para sair... ela cai na sua frente
         if (this.hasFuse && !this.flags.scared) {
@@ -387,6 +409,7 @@ export class Story {
 
   placeFather() {
     const F = this.G.father;
+    this.headTurn = undefined; this.knockAnim = undefined; this.flags.fatherTurned = false; this.flags.turnCrack = false;
     F.show(true); F.headTurned = false; F.idlePose(); F.setState('idle');
     F.place(5.5, 0, 11.5, Math.PI / 4);
   }
@@ -523,7 +546,7 @@ export class Story {
         if (this.cur === 'sala' || this.cur === 'arrive') {
           A.latch(V(13.5, 1.5, 0.2));
           G.say('VOCÊ', 'Tiraram o fusível principal. Alguém queria essa casa no escuro.', 3.6, 'self');
-          this.after(4.5, () => this.go('phone'));
+          if (!this.flags.phoneQueued) { this.flags.phoneQueued = true; this.after(4.5, () => { if (this.cur === 'sala' || this.cur === 'arrive') this.go('phone'); }); }
         } else G.say('VOCÊ', 'Falta o fusível.', 1.6, 'self');
         break;
       case 'phone': {

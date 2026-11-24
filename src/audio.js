@@ -52,6 +52,37 @@ export class Audio {
   }
   get t() { return this.ctx.currentTime; }
 
+  // ---------- gravações reais (Oculus Audio Pack 01, CC BY 4.0) ----------
+  async loadSamples(raw) {
+    this.buf = this.buf || {};
+    const jobs = [];
+    for (const [group, list] of Object.entries(raw || {})) {
+      this.buf[group] = [];
+      for (const ab of list) jobs.push(this.ctx.decodeAudioData(ab.slice(0)).then((b) => this.buf[group].push(b)).catch(() => {}));
+    }
+    await Promise.all(jobs);
+    this.startBeds();
+  }
+  has(g) { return this.buf && this.buf[g] && this.buf[g].length > 0; }
+  play(g, pos, { vol = 1, rate = 1, verb = 0.35, offset = 0, ref, rolloff, jitter = 0.06, t = this.t, bus } = {}) {
+    if (!this.ctx || !this.has(g)) return null;
+    const list = this.buf[g], b = list[Math.floor(Math.random() * list.length)];
+    const s = this.ctx.createBufferSource(); s.buffer = b;
+    s.playbackRate.value = rate * (1 + (Math.random() - 0.5) * jitter);
+    const d = this.dest(pos, { gain: vol, verb, ref, rolloff, bus }); s.connect(d); s.start(t, offset);
+    return { src: s, out: d };
+  }
+  bed(g, gain = 0, rate = 1) {
+    if (!this.has(g)) return null;
+    const s = this.ctx.createBufferSource(); s.buffer = this.buf[g][0]; s.loop = true; s.playbackRate.value = rate;
+    const out = this.ctx.createGain(); out.gain.value = gain; s.connect(out); out.connect(this.amb); s.start(this.t, Math.random() * s.buffer.duration);
+    return out;
+  }
+  startBeds() {
+    if (this.beds) return;
+    this.beds = { rainIn: this.bed('rainIn'), rainOut: this.bed('rainOut'), room: this.bed('room'), drone: this.bed('drone') };
+  }
+
   // ---------- roteamento ----------
   dest(pos, opts = {}) {
     const ctx = this.ctx;
@@ -155,12 +186,19 @@ export class Audio {
   update(dt, { inside = 0, tension = 0, fear = 0, exertion = 0, lights = false, basement = false }) {
     if (!this.ctx) return;
     const t = this.t;
-    const rainOut = basement ? 0.04 : (1 - inside) * 0.42 + inside * 0.08;
+    const B = this.beds;
+    if (B) {
+      B.rainOut && B.rainOut.gain.setTargetAtTime(basement ? 0 : (1 - inside) * 0.9, t, 0.5);
+      B.rainIn && B.rainIn.gain.setTargetAtTime(basement ? 0.06 : inside * 0.65, t, 0.5);
+      B.room && B.room.gain.setTargetAtTime(inside * 0.35, t, 0.5);
+      B.drone && B.drone.gain.setTargetAtTime(0.04 + tension * 0.75, t, 1.2);
+    }
+    const rainOut = B ? 0 : (basement ? 0.04 : (1 - inside) * 0.42 + inside * 0.08);
     this.rainGain.gain.setTargetAtTime(rainOut, t, 0.4);
     this.rainLP.frequency.setTargetAtTime(basement ? 300 : 9000 - inside * 7800, t, 0.4);
-    this.roofGain.gain.setTargetAtTime(basement ? 0.004 : inside * 0.03, t, 0.4);
+    this.roofGain.gain.setTargetAtTime(B ? 0 : (basement ? 0.004 : inside * 0.03), t, 0.4);
     this.windGain.gain.setTargetAtTime(basement ? 0.05 : 0.22 - inside * 0.12, t, 0.5);
-    this.drone.gain.setTargetAtTime(0.05 + tension * 0.55, t, 0.8);
+    this.drone.gain.setTargetAtTime(B ? tension * 0.15 : 0.05 + tension * 0.55, t, 0.8);
     this.whine.gain.setTargetAtTime(Math.max(0, tension - 0.55) * 0.18, t, 0.5);
     this.hum.gain.setTargetAtTime(lights ? 0.35 : 0, t, 0.1);
     // respiração: ritmo segue medo e esforço
@@ -184,6 +222,12 @@ export class Audio {
   // ---------- efeitos ----------
   footstep(surface, pos, vol = 1, run = false) {
     if (!this.ctx) return;
+    const g = surface === 'mud' ? 'stepDirt' : surface === 'concrete' ? 'stepConc' : surface === 'tile' ? 'stepConc' : (run ? 'runWood' : 'stepWood');
+    if (this.has(g)) {
+      this.play(g, pos, { vol: vol * (surface === 'tile' ? 0.8 : 1.2), rate: surface === 'tile' ? 1.15 : 1, verb: surface === 'concrete' ? 0.6 : 0.25 });
+      if ((surface === 'wood' || surface === 'porch') && Math.random() < 0.08) this.play('creak', pos, { vol: 0.12, rate: 1.4, offset: Math.random() * 2 });
+      return;
+    }
     const d = this.dest(pos, { verb: surface === 'concrete' ? 0.7 : 0.35, gain: vol });
     const t = this.t;
     const map = {
@@ -203,6 +247,7 @@ export class Audio {
 
   creak(pos, dur = 0.6, vol = 0.5, pitch = 1) {
     if (!this.ctx) return;
+    if (dur >= 0.8 && this.has('creak')) { this.play(Math.random() < 0.5 ? 'creak' : 'creakVerb', pos, { vol: vol * 1.3, rate: pitch, verb: 0.3 }); return; }
     const ctx = this.ctx, t = this.t, d = this.dest(pos, { verb: 0.6, gain: vol });
     const o = ctx.createOscillator(); o.type = 'sawtooth';
     const base = (90 + Math.random() * 90) * pitch;
@@ -218,19 +263,25 @@ export class Audio {
     env.gain.setValueAtTime(0.5, t + dur * 0.8); env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.start(t); am.start(t); o.stop(t + dur + 0.1); am.stop(t + dur + 0.1);
   }
-  doorOpen(pos) { this.latch(pos); this.creak(pos, 1.1, 0.55, 0.8); }
+  doorOpen(pos) {
+    if (this.has('doorOpen')) { this.play('knob', pos, { vol: 0.8 }); this.play('doorOpen', pos, { vol: 1, t: this.t + 0.12 }); if (Math.random() < 0.6) this.play('creak', pos, { vol: 0.35, rate: 0.9, t: this.t + 0.2 }); return; }
+    this.latch(pos); this.creak(pos, 1.1, 0.55, 0.8);
+  }
   latch(pos) {
+    if (this.has('knob')) { this.play(Math.random() < 0.5 ? 'knob' : 'lock', pos, { vol: 0.9 }); return; }
     const d = this.dest(pos, { verb: 0.4 }), t = this.t;
     this.noiseBurst(d, { t, dur: 0.03, f: 3500, q: 2, peak: 0.6 });
     this.noiseBurst(d, { t: t + 0.06, dur: 0.04, f: 2500, q: 3, peak: 0.4 });
   }
   doorSlam(pos, vol = 1) {
+    if (this.has('doorClose')) { this.play('doorClose', pos, { vol: 1.8 * vol, verb: 0.8, rate: 0.85 }); this.play('woodDrop', pos, { vol: 0.5 * vol, verb: 0.6 }); return; }
     const d = this.dest(pos, { verb: 1, gain: vol }), t = this.t;
     this.noiseBurst(d, { t, dur: 0.35, type: 'lowpass', f: 1800, fEnd: 200, peak: 1.2, buf: this.brown });
     this.tone(d, { t, f: 70, fEnd: 35, dur: 0.4, peak: 0.9 });
     this.noiseBurst(d, { t, dur: 0.05, f: 3000, q: 1, peak: 0.6 });
   }
   knock(pos, n = 3) {
+    if (this.has('knock')) { this.play('knock', pos, { vol: 1.6, verb: 0.7, rate: 0.85 }); return; }
     for (let i = 0; i < n; i++) {
       const t = this.t + i * 0.28 + Math.random() * 0.05, d = this.dest(pos, { verb: 0.8 });
       this.tone(d, { t, f: 140, fEnd: 70, dur: 0.12, peak: 0.9 });
@@ -238,20 +289,38 @@ export class Audio {
     }
   }
 
+  // revólver .38 disparado dentro de casa: estalo supersônico, corpo da explosão, estrondo grave e a sala respondendo
   gunshot(pos) {
-    const t = this.t, d = this.dest(pos, { verb: 1.4, gain: 1.4 });
-    this.noiseBurst(d, { t, dur: 0.012, a: 0.0005, type: 'highpass', f: 1000, peak: 2.5 });
-    this.noiseBurst(d, { t, dur: 0.25, a: 0.001, type: 'lowpass', f: 6000, fEnd: 300, peak: 2, buf: this.white });
-    this.tone(d, { t, f: 90, fEnd: 30, dur: 0.3, a: 0.001, peak: 1.6 });
-    const s = this.src(this.white); const sh = this.ctx.createWaveShaper(); sh.curve = this.curveHard;
-    const g = this.ctx.createGain(); s.connect(sh); sh.connect(g); g.connect(d); this.gainEnv(g, t, 0.0005, 0.6, 0.08); s.start(t); s.stop(t + 0.15);
-    // zumbido no ouvido + surdez momentânea (som real de disparo em ambiente fechado)
+    const ctx = this.ctx, t = this.t;
+    if (!this.roomIR) this.roomIR = this.impulse(0.9, 3.2);
+    const out = ctx.createGain(); out.gain.value = 1.6; out.connect(this.sfx);
+    const room = ctx.createConvolver(); room.buffer = this.roomIR; const rg = ctx.createGain(); rg.gain.value = 0.9; out.connect(room); room.connect(rg); rg.connect(this.master);
+    const sat = ctx.createWaveShaper(); sat.curve = this.curveHard; sat.connect(out);
+    // 1. estalo (2-4 ms, muito agudo)
+    const c = this.src(this.white), chp = this.filt('highpass', 2500, 0.7), cg = ctx.createGain();
+    c.connect(chp); chp.connect(cg); cg.connect(sat); cg.gain.setValueAtTime(1.4, t); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.006); c.start(t, Math.random()); c.stop(t + 0.02);
+    // 2. corpo: ruído com filtro fechando rápido
+    const n = this.src(this.white), lp = this.filt('lowpass', 7000, 0.5), ng = ctx.createGain();
+    lp.frequency.setValueAtTime(7000, t); lp.frequency.exponentialRampToValueAtTime(500, t + 0.16);
+    n.connect(lp); lp.connect(ng); ng.connect(sat); ng.gain.setValueAtTime(0.0001, t); ng.gain.exponentialRampToValueAtTime(1.3, t + 0.002); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    n.start(t, Math.random()); n.stop(t + 0.3);
+    // 3. estrondo grave
+    const o = ctx.createOscillator(), og = ctx.createGain(); o.type = 'sine';
+    o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.18);
+    o.connect(og); og.connect(sat); og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(1.6, t + 0.004); og.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    o.start(t); o.stop(t + 0.35);
+    // 4. cauda grave da sala
+    const tail = this.src(this.brown), tl = this.filt('lowpass', 400, 0.5), tg = ctx.createGain();
+    tail.connect(tl); tl.connect(tg); tg.connect(out); tg.gain.setValueAtTime(0.0001, t); tg.gain.exponentialRampToValueAtTime(0.5, t + 0.02); tg.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+    tail.start(t, Math.random()); tail.stop(t + 1);
+    // ouvido abafado + zumbido curto
     this.deaf.frequency.cancelScheduledValues(t);
-    this.deaf.frequency.setValueAtTime(900, t + 0.05); this.deaf.frequency.exponentialRampToValueAtTime(20000, t + 2.2);
-    const tin = this.dest(null, { verb: 0 }); this.tone(tin, { t: t + 0.05, f: 4100 + Math.random() * 400, dur: 2.4, a: 0.05, peak: 0.05 });
+    this.deaf.frequency.setValueAtTime(1400, t + 0.06); this.deaf.frequency.exponentialRampToValueAtTime(20000, t + 1.6);
+    const tin = this.dest(null, { verb: 0 }); this.tone(tin, { t: t + 0.08, f: 3900 + Math.random() * 600, dur: 1.4, a: 0.05, peak: 0.025 });
   }
   dryFire() { const d = this.dest(null, { verb: 0.2 }); this.noiseBurst(d, { dur: 0.03, f: 4000, q: 3, peak: 0.5 }); }
   reloadClick(i) {
+    if (i === 1 && this.has('shells')) { for (let k = 0; k < 3; k++) this.play('shells', null, { vol: 0.5, t: this.t + 0.25 + k * 0.09, verb: 0.2 }); }
     const d = this.dest(null, { verb: 0.2 }), t = this.t;
     if (i === 0) { this.noiseBurst(d, { t, dur: 0.05, f: 2000, q: 2, peak: 0.6 }); this.tone(d, { t, f: 900, dur: 0.05, peak: 0.1 }); }
     else if (i === 1) for (let k = 0; k < 6; k++) this.noiseBurst(d, { t: t + k * 0.04, dur: 0.02, f: 5000, q: 4, peak: 0.25 });
@@ -266,11 +335,16 @@ export class Audio {
     const d = this.dest(null, { verb: 0 }), t = this.t;
     this.tone(d, { t: t + 0.1, f: 1800, fEnd: 9500, dur, a: 0.2, peak: 0.018 });
   }
+  keyDrop(pos) { if (!this.play('keyDrop', pos, { vol: 1 })) this.pickup(); }
+  pages() { if (!this.play('pages', null, { vol: 0.7, verb: 0.1 })) this.pickup(); }
+  drawer(pos) { if (!this.play('drawer', pos, { vol: 0.9 })) this.pickup(); }
   pickup() { const d = this.dest(null, { verb: 0.2 }); this.noiseBurst(d, { dur: 0.12, f: 1800, q: 0.7, peak: 0.3 }); }
-  switchClick(pos) { const d = this.dest(pos, { verb: 0.3 }); this.noiseBurst(d, { dur: 0.02, f: 3000, q: 3, peak: 0.6 }); }
+  switchClick(pos) { if (this.play('switch', pos, { vol: 0.9, verb: 0.2 })) return; this.switchSynth(pos); }
+  switchSynth(pos) { const d = this.dest(pos, { verb: 0.3 }); this.noiseBurst(d, { dur: 0.02, f: 3000, q: 3, peak: 0.6 }); }
   flashlightClick() { const d = this.dest(null, { verb: 0.1 }); this.noiseBurst(d, { dur: 0.015, f: 4500, q: 4, peak: 0.35 }); }
 
   powerOn(pos) {
+    this.play('box', pos, { vol: 1 });
     const d = this.dest(pos, { verb: 1 }), t = this.t;
     this.noiseBurst(d, { t, dur: 0.2, type: 'lowpass', f: 600, peak: 1, buf: this.brown });
     this.tone(d, { t, f: 60, dur: 1.5, peak: 0.25, type: 'sawtooth' });
@@ -291,6 +365,12 @@ export class Audio {
   // grito humano distorcido (síntese de formantes)
   scream(pos, { pitch = 1, dur = 1.4, vol = 1, rough = 1 } = {}) {
     if (!this.ctx) return;
+    if (this.has('scream')) {
+      if (pitch < 0.7) { this.play('creatureVerb', pos, { vol: vol * 1.6, rate: 0.75 + pitch * 0.3, verb: 0.8, ref: 2.5 }); return; }
+      const g = dur > 1.1 ? 'scream' : 'screamShort';
+      this.play(this.has(g) ? g : 'scream', pos, { vol: vol * 1.5, rate: Math.min(1.25, Math.max(0.75, 0.55 + pitch * 0.4)), verb: 0.6, ref: 2 });
+      return;
+    }
     const ctx = this.ctx, t = this.t, d = this.dest(pos, { verb: 1.1, gain: vol, ref: 2 });
     const mix = ctx.createGain(); mix.gain.value = 0.5;
     const sh = ctx.createWaveShaper(); sh.curve = rough > 0.5 ? this.curveHard : this.curveSoft;
@@ -317,6 +397,7 @@ export class Audio {
     vib.start(t); vib.stop(t + dur + 0.1);
   }
   growl(pos, dur = 2, vol = 1) {
+    if (this.has('creature')) { this.play(dur > 2 ? 'creatureVerb' : 'creature', pos, { vol: vol * 1.6, rate: 0.7, verb: 0.9, ref: 2.5, rolloff: 0.9 }); return; }
     const ctx = this.ctx, t = this.t, d = this.dest(pos, { verb: 1.2, gain: vol, ref: 2.5, rolloff: 0.9 });
     const sh = ctx.createWaveShaper(); sh.curve = this.curveHard;
     const lp = this.filt('lowpass', 700, 2), env = ctx.createGain();
@@ -332,6 +413,7 @@ export class Audio {
     env.gain.setValueAtTime(0.0001, t); env.gain.exponentialRampToValueAtTime(0.9, t + 0.3); env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   }
   boneCrack(pos, n = 3) {
+    if (this.has('bones')) { this.play(n > 2 ? 'bones' : 'skull', pos, { vol: 1.3, verb: 0.3 }); return; }
     for (let i = 0; i < n; i++) {
       const d = this.dest(pos, { verb: 0.4, gain: 1.2 }), t = this.t + i * (0.06 + Math.random() * 0.12);
       this.noiseBurst(d, { t, dur: 0.025, a: 0.0005, f: 1600 + Math.random() * 1500, q: 1.5, peak: 1.2 });
@@ -354,6 +436,7 @@ export class Audio {
     this.noiseBurst(d, { t: t + 0.02, dur: 0.08, f: 1200, q: 1, peak: 0.2 });
   }
   bodyFall(pos) {
+    if (this.has('woodDrop')) { this.play('woodDrop', pos, { vol: 1.3, rate: 0.8, verb: 0.6 }); this.play('bones', pos, { vol: 0.6 }); return; }
     const d = this.dest(pos, { verb: 0.9 }), t = this.t;
     this.tone(d, { t, f: 80, fEnd: 30, dur: 0.4, peak: 1.2 });
     this.noiseBurst(d, { t, dur: 0.3, type: 'lowpass', f: 900, peak: 1, buf: this.brown });
@@ -365,6 +448,7 @@ export class Audio {
     for (let i = 0; i < (big ? 12 : 4); i++) this.tone(d, { t: t + Math.random() * 0.6, f: 600 + Math.random() * 900, fEnd: 1400, dur: 0.04, peak: 0.12 });
   }
   whisper(pos, dur = 2.5, vol = 0.6) {
+    if (this.has('whisper')) { this.play(Math.random() < 0.5 ? 'whisper' : 'whisperVerb', pos, { vol: vol * 1.8, ref: 0.8 }); return; }
     const ctx = this.ctx, t = this.t, d = this.dest(pos, { verb: 0.9, gain: vol, ref: 0.6 });
     const n = this.src(this.white); const env = ctx.createGain(); env.gain.value = 0;
     const f1 = this.filt('bandpass', 1500, 6), f2 = this.filt('bandpass', 3000, 8);
@@ -382,6 +466,16 @@ export class Audio {
   // voz "humana" ininteligível por baixo das legendas (rádio, telefone, criança)
   voice(pos, dur, { pitch = 120, radio = false, child = false, demonic = false, vol = 0.6 } = {}) {
     if (!this.ctx) return;
+    if (this.buf) {
+      if (radio) {
+        const d = this.dest(pos, { verb: 0.05, gain: 0.5 }), t = this.t;
+        this.noiseBurst(d, { t, dur: 0.12, f: 2000, q: 0.5, peak: 0.4 });
+        const st = this.src(this.white); const bp = this.filt('bandpass', 1800, 0.6); const g = this.ctx.createGain(); g.gain.value = 0.035;
+        st.connect(bp); bp.connect(g); g.connect(d); st.start(t, Math.random()); st.stop(t + dur);
+        this.noiseBurst(d, { t: t + dur, dur: 0.15, f: 2000, q: 0.5, peak: 0.35 });
+      }
+      return;
+    }
     const ctx = this.ctx, t = this.t, d = this.dest(pos, { verb: radio ? 0.1 : 0.6, gain: vol, ref: 1 });
     const o = ctx.createOscillator(); o.type = 'sawtooth';
     const n = this.src(this.white); const ng = ctx.createGain(); ng.gain.value = 0.08;
@@ -430,6 +524,11 @@ export class Audio {
   }
   // susto: crescendo invertido + impacto dissonante
   sting(big = true) {
+    if (this.has('impact')) {
+      this.play('impact', null, { vol: big ? 1.6 : 0.9, verb: 0.2, jitter: 0 });
+      if (big && this.has('strings')) this.play('strings', null, { vol: 0.8, verb: 0.2, jitter: 0 });
+      return;
+    }
     const ctx = this.ctx, t = this.t, d = this.dest(null, { verb: 1, gain: big ? 1 : 0.55 });
     const sh = ctx.createWaveShaper(); sh.curve = this.curveSoft; sh.connect(d);
     for (const f of [92.5, 98, 138.6, 185, 196, 277, 554, 587, 1108]) {
@@ -448,12 +547,14 @@ export class Audio {
     s.connect(bp); bp.connect(g); g.connect(d); s.start(t); s.stop(t + dur + 0.05);
   }
   hit() {
+    this.play('punch', null, { vol: 1.2, verb: 0.1 });
     const d = this.dest(null, { verb: 0.3 }), t = this.t;
     this.tone(d, { t, f: 120, fEnd: 40, dur: 0.25, peak: 1.4 });
     this.noiseBurst(d, { t, dur: 0.2, type: 'lowpass', f: 1500, peak: 1, buf: this.brown });
     this.deaf.frequency.cancelScheduledValues(t); this.deaf.frequency.setValueAtTime(500, t); this.deaf.frequency.exponentialRampToValueAtTime(20000, t + 1.2);
   }
-  fleshHit(pos) { const d = this.dest(pos, { verb: 0.3 }); this.noiseBurst(d, { dur: 0.08, type: 'lowpass', f: 900, peak: 1, buf: this.pink }); this.tone(d, { f: 100, fEnd: 50, dur: 0.1, peak: 0.6 }); }
+  fleshHit(pos) { if (this.play('squish', pos, { vol: 1, rate: 1.3, verb: 0.2 })) return; this.fleshSynth(pos); }
+  fleshSynth(pos) { const d = this.dest(pos, { verb: 0.3 }); this.noiseBurst(d, { dur: 0.08, type: 'lowpass', f: 900, peak: 1, buf: this.pink }); this.tone(d, { f: 100, fEnd: 50, dur: 0.1, peak: 0.6 }); }
 
   // ---------- loops posicionais ----------
   loop(kind, pos, vol = 1) {
@@ -461,6 +562,10 @@ export class Audio {
     const ctx = this.ctx, d = this.dest(pos, { verb: 0.5, gain: vol, ref: kind === 'flies' ? 0.6 : 1.2 });
     const nodes = []; let timer = null, alive = true;
     const t = this.t;
+    if (kind.startsWith('sample:')) {
+      const g = kind.slice(7);
+      if (this.has(g)) { const sb = this.ctx.createBufferSource(); sb.buffer = this.buf[g][0]; sb.loop = true; sb.connect(d); sb.start(t, Math.random() * sb.buffer.duration); nodes.push(sb); }
+    }
     if (kind === 'flies') {
       for (let i = 0; i < 4; i++) {
         const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 170 + i * 23;
@@ -480,11 +585,14 @@ export class Audio {
       const bell = () => {
         if (!alive) return;
         const t0 = this.t;
-        for (const f of [1320, 1660]) {
-          const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
-          const am = ctx.createOscillator(); am.type = 'square'; am.frequency.value = 22; const ag = ctx.createGain(); ag.gain.value = 0.25;
-          const g = ctx.createGain(); g.gain.value = 0.25; am.connect(ag); ag.connect(g.gain);
-          o.connect(g); g.connect(d); o.start(t0); am.start(t0); o.stop(t0 + 1.1); am.stop(t0 + 1.1);
+        // sino de metal batido pelo martelinho ~25 vezes por segundo
+        for (let k = 0; k < 28; k++) {
+          const ts = t0 + k * 0.04, bell = k % 2 ? 1 : 1.18;
+          for (const [r, a, dcy] of [[1, 0.25, 0.09], [2.76, 0.12, 0.06], [5.4, 0.06, 0.04], [8.9, 0.03, 0.03]]) {
+            const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 760 * bell * r;
+            const g = ctx.createGain(); g.gain.setValueAtTime(a, ts); g.gain.exponentialRampToValueAtTime(0.0005, ts + dcy + 0.03);
+            o.connect(g); g.connect(d); o.start(ts); o.stop(ts + dcy + 0.05);
+          }
         }
         timer = setTimeout(bell, 3600);
       };

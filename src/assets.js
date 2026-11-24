@@ -14,6 +14,23 @@ export const MODELS = [
   'dead_tree_trunk_02', 'plastic_monobloc_chair_01', 'rubber_boots', 'mantel_clock_01', 'drawer_cabinet', 'painted_wooden_cabinet', 'wooden_bowl_01', 'pot_enamel_01',
 ];
 
+const R = (base, n) => Array.from({ length: n }, (_, i) => `${base}_0${i + 1}`);
+export const SFX = {
+  rainIn: ['RAINInt_ForestCabinRain_L01'], rainOut: ['RAINVege_ForestRain_L01'], room: ['AMBHome_RoomTone_L01'], drone: ['DSGNDron_DroneCreepy_02'],
+  stepWood: R('FEETHmn_ShoeWoodWalk', 5), runWood: R('FEETHmn_ShoeWoodRun', 5), stepDirt: R('FEETHmn_ShoeDirtWalk', 5), stepConc: R('FEETHmn_ShoeConcreteWalk', 5),
+  doorOpen: ['DOORWood_FrontDoorOpen_01'], doorClose: ['DOORWood_FrontDoorClose_01', 'DOORWood_OfficeDoorClose_01'], knob: ['DOORHdwr_FrontDoorKnob_01'], lock: ['DOORHdwr_FrontDoorLock_01'],
+  knock: ['DOORKnck_OfficeDoorKnock_01'], unlock: ['MECHLock_DoorUnlockKey_01'], drawer: ['DRWRWood_DrawerOpen_01'],
+  switch: ['MECHSwtch_SwitchSmallOn_01', 'MECHSwtch_SwitchSmallOn_02', 'MECHSwtch_SwitchSmallOff_01', 'MECHSwtch_SwitchSmallOff_02'], box: ['METLHndl_ElectricBoxOpen_01'],
+  keyDrop: R('OBJKey_KeyDrop', 2), pages: ['PAPRHndl_BookPageTurns_01'], shells: R('BLLTShel_ShellCasingConcrete', 3),
+  scream: ['VOXScrm_FemaleScream_01', 'VOXFem_Female01DeathScream_01'], screamShort: ['VOXFem_Female02DeathScream_01'],
+  groanF: ['VOXFem_GroanCreepy_01'], groanM: ['VOXMale_GroanCreepy_01'], whisper: ['VOXWhsp_WhispersCreepy_01'], whisperVerb: ['VOXWhsp_WhispersCreepyReverb_01'],
+  creak: R('WOODFric_CreaksCreepy', 2), creakVerb: R('WOODFric_CreaksCreepyReverb', 2), bones: R('GOREBone_BonesBreaking', 3), skull: R('GOREBone_SkullCracking', 2),
+  squish: R('GORESqsh_BloodSquishSlimy', 2), impact: R('DSGNImpt_ImpactCreepyReverb', 3), strings: R('MUSCStr_StringsCreepy', 2),
+  creature: R('CREAMnstr_CreatureCreepy', 3), creatureVerb: R('CREAMnstr_CreatureCreepyReverb', 3), chains: R('CHAINMvmt_ChainsCreepy', 2), clock: ['CLOCKTick_ClockCreepy_01'],
+  organ: ['MUSCKeyd_PipeOrganCreepy_01'], scratch: R('METLFric_ScratchCreepy', 2), punch: ['FGHTImpt_PunchHardest_01'], woodDrop: ['WOODImpt_LargeWoodDrop_01'],
+  glass: ['GLASBrk_WindowPaneSmallBreak_01'], breathF: ['HMNBrth_FemaleBreathing_01'],
+};
+
 export async function loadAssets(renderer, onProgress) {
   const manager = new THREE.LoadingManager();
   let total = 0, done = 0;
@@ -21,7 +38,7 @@ export async function loadAssets(renderer, onProgress) {
   const tl = new THREE.TextureLoader(manager);
   const gl = new GLTFLoader(manager);
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  const A = { tex: {}, models: {}, env: null, head: null, headMaps: {} };
+  const A = { tex: {}, models: {}, env: null, head: null, headMaps: {}, sfxRaw: {} };
   // versão de arquivo único: os recursos vêm embutidos na própria página
   const EMB = window.__EMBED;
   const U = (p) => (EMB && EMB.files[p]) || BASE + p;
@@ -52,6 +69,24 @@ export async function loadAssets(renderer, onProgress) {
     t.mapping = THREE.EquirectangularReflectionMapping;
     const pm = new THREE.PMREMGenerator(renderer); A.env = pm.fromEquirectangular(t).texture; t.dispose(); pm.dispose();
   }));
+  // corpo humano real da mãe
+  total++;
+  jobs.push((async () => {
+    try {
+      const r = await fetch(U('human/female02/body.json')); const data = await r.json();
+      const [hair, face, body] = await Promise.all(['hair', 'face', 'body'].map((k) => loadTex(U(`human/female02/${k}.jpg`), true)));
+      A.female = { data, imgs: { hair: hair && hair.image, face: face && face.image, body: body && body.image } };
+    } catch (e) { console.warn('corpo', e); }
+    tick();
+  })());
+  // sons gravados: baixa agora, decodifica quando o áudio for liberado pelo clique
+  for (const [g, list] of Object.entries(SFX)) {
+    A.sfxRaw[g] = [];
+    for (const n of list) {
+      total++;
+      jobs.push(fetch(U(`sfx/${n}.mp3`)).then((r) => (r.ok ? r.arrayBuffer() : null)).then((ab) => { if (ab) A.sfxRaw[g].push(ab); tick(); }).catch(() => tick()));
+    }
+  }
   await Promise.all(jobs);
   return A;
 }

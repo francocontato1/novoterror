@@ -462,8 +462,8 @@ export function hairStrands() {
   return memo('hair', () => {
     const W = 128, H = 256, r = rng(77);
     const [c, x] = canvas(W, H);
-    for (let i = 0; i < 260; i++) {
-      x.strokeStyle = `rgba(${10 + r() * 15},${8 + r() * 10},${6 + r() * 8},${0.5 + r() * 0.5})`; x.lineWidth = 0.6 + r() * 1.4;
+    for (let i = 0; i < 90; i++) {
+      x.strokeStyle = `rgba(${10 + r() * 15},${8 + r() * 10},${6 + r() * 8},${0.6 + r() * 0.4})`; x.lineWidth = 0.5 + r() * 1.1;
       const sx = r() * W; x.beginPath(); x.moveTo(sx, 0);
       x.bezierCurveTo(sx + (r() - 0.5) * 20, H * 0.3, sx + (r() - 0.5) * 30, H * 0.6, sx + (r() - 0.5) * 40, H * (0.6 + r() * 0.4)); x.stroke();
     }

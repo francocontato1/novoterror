@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import * as T from './textures.js';
 import { buildBody, bodyMats } from './bodies.js';
+import { buildRealBody } from './realbody.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const tmp = V(), tmp2 = V();
@@ -44,7 +45,7 @@ class Creature {
   setState(s) { this.state = s; this.stateT = 0; }
   show(b) { this.active = b; this.root.visible = b; }
   place(x, y, z, yaw = 0) { this.pos.set(x, y, z); this.yaw = yaw; this.sync(); }
-  sync() { this.root.position.copy(this.pos); this.root.rotation.y = this.yaw; }
+  sync() { this.root.position.copy(this.pos); this.root.rotation.y = this.yaw; if (this.P.drive) this.P.drive(); }
   chest() { return tmp.copy(this.pos).setY(this.pos.y + 1.2); }
   dist() { const p = this.g.player.pos; return Math.hypot(p.x - this.pos.x, p.z - this.pos.z); }
   faceTo(x, z, k = 1) {
@@ -86,11 +87,19 @@ class Creature {
     const lit = G.lightsOn || d < 2.2 || (G.player.flashlightOn && dot > Math.cos(0.55) && d < 16) || G.flashT > 0;
     return lit;
   }
-  hitBy(ray) {
-    if (!this.active) return null;
+  // ponto central do corpo para mira (muda com a postura)
+  aimPoint() { return tmp.copy(this.pos).setY(this.pos.y + (this.aimH ?? 1.2)); }
+  hitBy(ray, assist = 0) {
+    if (!this.active || this.state === 'hidden' || this.state === 'idle') return null;
     const r = new THREE.Raycaster(ray.origin, ray.direction, 0, 40);
     const hits = r.intersectObject(this.root, true);
-    return hits.length ? hits[0] : null;
+    if (hits.length) return hits[0];
+    // área de acerto do tamanho do corpo + assistência angular
+    const c = this.aimPoint().clone(), d = c.distanceTo(ray.origin);
+    const rad = (this.hitR ?? 0.42) + d * assist;
+    const p = new THREE.Vector3();
+    if (ray.intersectSphere(new THREE.Sphere(c, rad), p)) return { point: p, distance: p.distanceTo(ray.origin), face: null };
+    return null;
   }
   attack(dmg) {
     this.g.player.damage(dmg, this.pos);
@@ -107,8 +116,9 @@ class Creature {
 const CEIL = 2.68;
 export class Crawler extends Creature {
   constructor(game, M) {
-    const P = buildHumanoid(M, { h: 1.62, thin: 0.72, armK: 1.45, fingerK: 1.9, skin: M.greySkin, dress: M.gown, dressLen: 0.72, hair: true, hairFace: true, hairLen: 0.8, face: 'mother', barelegs: true });
+    const P = ASSETS && ASSETS.female ? buildRealBody(ASSETS.female.data, ASSETS.female.imgs, { h: 1.64 }) : buildHumanoid(M, { h: 1.62, thin: 0.72, armK: 1.45, fingerK: 1.9, skin: M.greySkin, dress: M.gown, dressLen: 0.72, hair: true, hairFace: false, hairLen: 0.8, face: 'mother', barelegs: true });
     super(game, P, { hp: 3, radius: 0.42 });
+    this.hitR = 0.5;
     this.onCeiling = false; this.fleeTo = null; this.onFlee = null; this.skT = 0; this.retreatT = 0; this.flip = 0;
   }
   pose(t, moving) {
@@ -148,72 +158,94 @@ export class Crawler extends Creature {
     this.hp--; this.g.audio.scream(this.pos.clone().setY(this.pos.y > 1.5 ? 2.2 : 0.8), { pitch: 1.3, dur: 0.7 });
     this.g.spawnBlood(hit.point, hit.face ? hit.face.normal : null);
     if (this.hp <= 0) { this.flee(); return; }
-    if (this.onCeiling) { this.fall(); return; }
-    this.stun = 0.7;
+    if (this.onCeiling || this.state === 'poise') { this.fall(); return; }
+    this.stun = Math.max(this.stun, 0.8);
   }
   // flash: no teto ela despenca e se debate no chão (vulnerável)
   flashed() {
-    if (['flee', 'hidden', 'ceiling'].includes(this.state)) return;
+    if (['flee', 'hidden', 'ceiling', 'climb'].includes(this.state)) return;
     this.g.audio.scream(this.pos.clone().setY(this.onCeiling ? 2.2 : 0.8), { pitch: 1.6, dur: 1.2, vol: 0.9 });
-    if (this.onCeiling) this.fall(); else this.stun = 2.4;
+    if (this.onCeiling || this.state === 'poise') this.fall(); else { this.stun = 3.2; this.setState('floor'); }
   }
   fall() { this.setCeiling(false); this.setState('fall'); this.pos.y = 2.2; this.dropV = 0; }
   flee() { this.setState('flee'); this.stun = 0; this.g.audio.scream(this.pos.clone().setY(1), { pitch: 1.1, dur: 2.2, vol: 1.2 }); }
+  // de pé, torta: pescoço quebrado, braços esticados para você
+  poseUpright(t, moving) {
+    const P = this.P, ph = t * 6.5, j = Math.sin(t * 31) * 0.05;
+    P.hips.position.y = 0.88 + Math.abs(Math.sin(ph)) * 0.03 * moving;
+    P.hips.rotation.set(0, 0, Math.sin(ph) * 0.06 + j);
+    P.spine.rotation.set(0.32 + j, 0, -0.08);
+    P.neck.rotation.set(0.25, 0.1, 0.75 + Math.sin(t * 9) * 0.06);
+    P.head.rotation.set(-0.35, 0, 0.25 + j * 2);
+    P.armL.rotation.set(-1.35 + Math.sin(ph) * 0.2 * moving, 0, -0.18); P.armR.rotation.set(-1.5 - Math.sin(ph) * 0.2 * moving, 0, 0.22);
+    P.foreL.rotation.set(-0.25, 0, 0); P.foreR.rotation.set(-0.15, 0, 0);
+    P.handL.rotation.set(0.5, 0, 0); P.handR.rotation.set(0.5, 0, 0);
+    P.legL.rotation.set(Math.sin(ph) * 0.45 * moving, 0, -0.06); P.legR.rotation.set(-Math.sin(ph) * 0.45 * moving, 0, 0.06);
+    P.shinL.rotation.set(Math.max(0, -Math.sin(ph)) * 0.7 * moving + 0.08, 0, 0); P.shinR.rotation.set(Math.max(0, Math.sin(ph)) * 0.7 * moving + 0.08, 0, 0);
+    if (P.hair) P.hair.rotation.x = 0.1;
+  }
   update(dt) {
     if (!this.active) return;
     this.t += dt; this.stateT += dt; this.atkCD -= dt;
     const G = this.g, A = G.audio, L = G.level;
     this.poseClock -= dt;
-    const doPose = this.poseClock <= 0; if (doPose) this.poseClock = 1 / 15;
+    const doPose = this.poseClock <= 0; if (doPose) this.poseClock = 1 / 18;
     const st = this.state;
     if (st === 'hidden') return;
+    this.aimH = this.onCeiling ? -0.42 : (st === 'floor' ? 1.15 : 0.45);
     if (st === 'ceiling') { if (doPose) this.pose(this.t * 0.2, 0.15); this.sync(); return; }
-    // caçando pelo teto: o som denuncia, a lanterna quase nunca alcança
+    // caçando pelo teto: o som denuncia; mais lenta que você correndo
     if (st === 'ceilHunt' || st === 'ceilRetreat') {
       let target = G.player.pos;
-      if (st === 'ceilRetreat') {
-        target = this.retreatTo; if (this.stateT > 2.5 + Math.random()) this.setState('ceilHunt');
-      }
-      const sp = st === 'ceilRetreat' ? 4.2 : (this.dist() > 6 ? 3.6 : 2.4);
+      if (st === 'ceilRetreat') { target = this.retreatTo || target; if (this.stateT > 5) this.setState('ceilHunt'); }
+      const sp = st === 'ceilRetreat' ? 3.2 : (this.dist() > 6 ? 2.6 : 1.9);
       const moved = this.moveToward(target, sp, dt, false); this.pos.y = CEIL;
       if (doPose) this.pose(this.t, moved > 0 ? 1 : 0);
-      this.skT -= dt; if (this.skT <= 0 && moved > 0) { this.skT = 0.16 + Math.random() * 0.1; A.skitter(this.pos.clone(), 0.14, 0.55); }
-      if (Math.random() < dt * 0.4) A.creak(this.pos.clone(), 0.4, 0.3, 1.2);
-      if (st === 'ceilHunt' && this.dist() < 1.7 && this.atkCD <= 0 && L.los(G.camera.position, this.pos.clone().setY(2.3))) {
-        this.drop(); this.lunge = true;
-        A.scream(this.pos.clone().setY(2), { pitch: 1.45, dur: 0.8, vol: 1.2 }); A.sting(false);
+      this.skT -= dt; if (this.skT <= 0 && moved > 0) { this.skT = 0.2 + Math.random() * 0.12; A.skitter(this.pos.clone(), 0.14, 0.6); }
+      if (Math.random() < dt * 0.25) A.creak(this.pos.clone(), 1.2, 0.5, 1.1);
+      if (st === 'ceilHunt' && this.dist() < 2.2 && this.atkCD <= 0 && L.los(G.camera.position, this.pos.clone().setY(2.3))) {
+        // aviso: para em cima de você e grita antes de cair
+        this.setState('poise'); A.scream(this.pos.clone().setY(2.3), { pitch: 1.3, dur: 0.8, vol: 1.1 }); G.flickerT = 0.6;
       }
+      this.sync(); return;
+    }
+    if (st === 'poise') {
+      if (doPose) { this.pose(this.t * 3, 0.3); this.P.neck.rotation.z = Math.sin(this.t * 40) * 0.3; }
+      this.faceTo(G.player.pos.x, G.player.pos.z, dt * 6);
+      if (this.stateT > 0.9) { this.drop(); this.lunge = this.dist() < 2.6; }
       this.sync(); return;
     }
     if (st === 'drop' || st === 'fall') {
       this.dropV -= 11 * dt; this.pos.y += this.dropV * dt;
-      if (this.lunge) { const p = G.player.pos; const dx = p.x - this.pos.x, dz = p.z - this.pos.z, d = Math.hypot(dx, dz) || 1; this.pos.x += dx / d * Math.min(d - 0.6, 3 * dt); this.pos.z += dz / d * Math.min(d - 0.6, 3 * dt); this.faceTo(p.x, p.z, 1); }
+      if (this.lunge) { const p = G.player.pos; const dx = p.x - this.pos.x, dz = p.z - this.pos.z, d = Math.hypot(dx, dz) || 1; const k = Math.max(0, Math.min(d - 0.7, 2.5 * dt)); this.pos.x += dx / d * k; this.pos.z += dz / d * k; this.faceTo(p.x, p.z, 1); }
       const fy = L.floorY(this.pos.x, this.pos.z);
       if (this.pos.y <= fy) {
         this.pos.y = fy; A.bodyFall(this.pos.clone()); G.shake(0.25);
-        if (st === 'fall') { this.stun = 2.2; this.setState('floor'); }
-        else { this.setState('floor'); if (this.lunge && this.dist() < 1.5) { this.attack(20); A.scream(this.pos.clone().setY(0.8), { pitch: 1.35, dur: 0.6 }); } this.stun = 0.25; }
+        this.setState('floor');
+        if (st === 'fall') this.stun = 3.3;
+        else { this.stun = 0.5; if (this.lunge && this.dist() < 1.4) { this.attack(16); A.scream(this.pos.clone().setY(1.4), { pitch: 1.35, dur: 0.6 }); this.atkCD = 1.4; } }
         this.lunge = false;
       }
       if (doPose) this.stunPose(this.t); this.sync(); return;
     }
-    if (this.stun > 0) { this.stun -= dt; if (doPose) this.stunPose(this.t); this.pushPlayerApart(); this.sync(); return; }
+    if (this.stun > 0) { this.stun -= dt; this.aimH = 0.4; if (doPose) this.stunPose(this.t); this.pushPlayerApart(); this.sync(); return; }
     if (st === 'floor') {
-      // breve corrida no chão, depois sobe de volta ao teto
-      const moved = this.moveToward(G.player.pos, 3.8, dt);
-      if (doPose) this.pose(this.t, moved > 0 ? 1 : 0);
-      if (this.dist() < 1.0 && this.atkCD <= 0) { this.attack(18); A.scream(this.pos.clone().setY(0.8), { pitch: 1.4, dur: 0.5 }); this.climb(); }
-      else if (this.stateT > 1.4) this.climb();
+      // levanta torta e vem andando; depois de um tempo volta ao teto
+      const moved = this.moveToward(G.player.pos, 2.3, dt);
+      if (doPose) this.poseUpright(this.t, moved > 0 ? 1 : 0);
+      this.stepT -= dt; if (this.stepT <= 0 && moved > 0) { this.stepT = 0.42; A.footstep('wood', this.pos, 0.5); if (Math.random() < 0.3) A.boneCrack(this.pos.clone().setY(1.5), 1); }
+      if (this.dist() < 1.1 && this.atkCD <= 0) { this.attack(16); A.scream(this.pos.clone().setY(1.4), { pitch: 1.4, dur: 0.5 }); this.climb(); }
+      else if (this.stateT > 4.5) this.climb();
       this.pushPlayerApart(); this.sync(); return;
     }
     if (st === 'climb') {
-      this.pos.y += dt * 6;
+      this.pos.y += dt * 5;
       if (doPose) this.stunPose(this.t);
       if (this.pos.y >= CEIL - 0.5) {
         this.setCeiling(true); this.pos.y = CEIL; A.skitter(this.pos.clone(), 0.5, 0.8);
         const p = G.player.pos, spots = L.stalkerSpots.filter((s2) => Math.hypot(s2.x - p.x, s2.z - p.z) > 4.5 && L.floorY(s2.x, s2.z) === 0);
         this.retreatTo = spots[Math.floor(Math.random() * spots.length)] || L.stalkerSpots[0];
-        this.setState('ceilRetreat'); this.atkCD = 2.5;
+        this.setState('ceilRetreat'); this.atkCD = 3;
       }
       this.sync(); return;
     }
@@ -226,7 +258,6 @@ export class Crawler extends Creature {
       if (moved && Math.random() < dt * 6) A.skitter(this.pos, 0.3, 0.5);
       this.sync(); return;
     }
-    // estado legado "chase": vira caça pelo teto
     if (st === 'chase') { this.climb(); }
     this.sync();
   }
@@ -236,7 +267,7 @@ export class Crawler extends Creature {
 // ------------------- O PAI: só se move quando ninguém olha -------------------
 export class Stalker extends Creature {
   constructor(game, M) {
-    const P = buildHumanoid(M, { h: 1.92, thin: 0.9, armK: 1.3, fingerK: 1.4, skin: M.paleSkin, top: M.shirt, bottom: M.pants, face: 'father' });
+    const P = buildHumanoid(M, { h: 1.88, thin: 0.95, armK: 1.25, fingerK: 1.4, skin: M.paleSkin, top: M.shirt, bottom: M.pants, face: 'father', sleeves: true, hair: true, hairLen: 0.14 });
     super(game, P, { hp: 3, radius: 0.35 });
     this.seen = false; this.unseenT = 0; this.creakT = 0; this.headTurned = false;
     this.idlePose();

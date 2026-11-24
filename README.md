@@ -43,6 +43,10 @@ npm run build && python3 scripts/standalone.py
 | Q ou botão direito | flash da câmera: atordoa as entidades e revela o que os olhos não veem |
 | E | interagir (segure para ações longas) |
 | F | ligar/desligar a lanterna |
+| T | entrar e sair da tela cheia |
+| Esc | pausar e soltar o mouse |
+
+No celular: lado esquerdo da tela anda, lado direito olha, botões à direita. No iPhone, para tela cheia, use Compartilhar → Adicionar à Tela de Início.
 
 ## Como foi feito
 
@@ -78,4 +82,6 @@ src/textures.js   texturas procedurais
 - **Texturas e modelos 3D**: [Poly Haven](https://polyhaven.com) e [ambientCG](https://ambientcg.com), licença CC0 (domínio público), obtidos pelo espelho [zuujis-cc0](https://github.com/zuujis-cc0).
 - **Céu noturno HDR**: "Satara Night (no lamps)", Poly Haven, CC0.
 - **Cabeça humana escaneada**: "Lee Perry-Smith head" por [Infinite-Realities](https://www.ir-ltd.net/), licença [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), distribuída com os exemplos do three.js. No jogo ela é deformada para criar os rostos das entidades.
+- **Sons gravados**: "Oculus Audio Pack 01" por Oculus VR, LLC (https://developers.meta.com/vr/downloads/package/oculus-audio-pack-1/), licença [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), via [Meta-open-sound](https://github.com/facebookincubator/Meta-open-sound). Arquivos convertidos para MP3.
+- **Corpo da mãe**: modelo "female02" da Reallusion iClone, do Google 3D Warehouse, distribuído nos exemplos do three.js. Esqueleto e texturas alterados por código.
 - Motor: [three.js](https://threejs.org) (MIT).

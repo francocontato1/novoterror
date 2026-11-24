@@ -39,7 +39,7 @@ G.brightness = 1; G.volume = 1;
 G.post = createPost(renderer, scene, camera);
 { // a arma é desenhada por cima, com o buffer de profundidade limpo
   const gp = new RenderPass(gunScene, camera); gp.clear = false; gp.clearDepth = true;
-  G.post.composer.insertPass(gp, 1);
+  G.post.composer.insertPass(gp, 2);
 }
 G.ready = (async () => {
   G.assets = await loadAssets(renderer, (k) => { const e = document.querySelector('#loading em'); if (e) e.style.width = (k * 100).toFixed(0) + '%'; });
@@ -60,14 +60,23 @@ G.ready = (async () => {
   const b = document.querySelector('#start'); b.disabled = false; b.focus();
 })();
 
-const RS = Math.min(devicePixelRatio, 1.5) * Number(params.get('scale') || 1);
+// qualidade: alta (PC bom) / media / baixa (celular)
+G.quality = params.get('q') || (matchMedia('(pointer: coarse)').matches ? 'baixa' : 'alta');
+let RS = 1;
+function setQuality(q) {
+  G.quality = q;
+  const cap = q === 'alta' ? 2 : q === 'media' ? 1.5 : 1.1;
+  RS = Math.min(devicePixelRatio, cap) * Number(params.get('scale') || 1);
+  if (G.post.ao) G.post.ao.enabled = q === 'alta';
+  resize();
+}
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setPixelRatio(RS); renderer.setSize(w, h, false);
   camera.aspect = w / h; camera.fov = w / h < 1 ? 95 : 80; camera.updateProjectionMatrix();
   G.post.setSize(w, h, RS);
 }
-addEventListener('resize', resize); resize();
+addEventListener('resize', resize); setQuality(G.quality);
 
 // ---------------------------------------------------------------- poeira no feixe da lanterna
 const DUST = 700;
@@ -134,6 +143,7 @@ G.bloodDrip = (x, z) => {
   setTimeout(() => { placeDecal(T.bloodSplat(77, 'splat'), 0.18, V(x, G.level.floorY(x, z) + 0.008, z), V(0, 1, 0), { rough: 0.15 }); const d = G.audio.dest(V(x, 0.1, z)); G.audio.tone(d, { f: 700, fEnd: 1400, dur: 0.06, peak: 0.5 }); G.audio.noiseBurst(d, { dur: 0.05, f: 2500, q: 2, peak: 0.25 }); }, 720);
 };
 G.scareFx = 0;
+G.hitMarker = () => { const c = $('#cross'); c.classList.remove('hit'); void c.offsetWidth; c.classList.add('hit'); };
 G.shake = (a) => { G.player.shakeAmt = Math.min(1.5, G.player.shakeAmt + a); };
 G.alertAll = () => {};
 G.flickerBulbs = (dur) => G.level.bulbs.forEach(b => (b.flicker = dur * (0.6 + Math.random() * 0.6)));
@@ -155,8 +165,8 @@ G.onFlash = () => {
   }
   for (const c of G.creatures) {
     if (!c.active) continue;
-    const p = c.chest().clone(), d = p.distanceTo(cam.position), dir = p.sub(cam.position).normalize();
-    if (d < 10 && dir.dot(fwd) > 0.6 && G.level.los(cam.position, c.chest().clone())) c.flashed();
+    const p = c.aimPoint().clone(), d = p.distanceTo(cam.position), dir = p.clone().sub(cam.position).normalize();
+    if (d < 11 && dir.dot(fwd) > 0.5 && G.level.los(cam.position, p)) c.flashed();
   }
   G.story.event('flash');
 };
@@ -214,49 +224,71 @@ function cards(lines, done, each = 4.2) {
 // ---------------------------------------------------------------- input
 const keys = {};
 let holdI = null, holdT = 0, focusI = null;
+// teclado: usa o código físico E a letra digitada (funciona com qualquer layout)
+const KEYMAP = { w: 'KeyW', a: 'KeyA', s: 'KeyS', d: 'KeyD', e: 'KeyE', r: 'KeyR', f: 'KeyF', q: 'KeyQ', t: 'KeyT', shift: 'ShiftLeft', arrowup: 'ArrowUp', arrowdown: 'ArrowDown', arrowleft: 'ArrowLeft', arrowright: 'ArrowRight' };
+const codesOf = (e) => { const k = KEYMAP[(e.key || '').toLowerCase()]; return k && k !== e.code ? [e.code, k] : [e.code]; };
+const isTouch = !params.has('desktop') && (matchMedia('(pointer: coarse)').matches || params.has('touch'));
+G.touch = isTouch;
+document.body.classList.toggle('touch', isTouch);
+const press = (c) => {
+  if (G.noteOpen) { if (c === 'KeyE' || c === 'Escape' || c === 'Space') closeNote(); return; }
+  if (c === 'KeyT') { toggleFull(); return; }
+  if (G.paused || G.player.dead) return;
+  if (c === 'KeyE' && focusI) { if (focusI.hold) { holdI = focusI; holdT = 0; } else focusI.use(); }
+  if (c === 'KeyR') G.player.reload();
+  if (c === 'KeyF') G.player.toggleFlashlight();
+  if (c === 'KeyQ') G.player.cameraFlash();
+};
 addEventListener('keydown', (e) => {
   if (!G.started) return;
-  keys[e.code] = true;
+  const cs = codesOf(e); cs.forEach((c) => (keys[c] = true));
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(e.code)) e.preventDefault();
   if (e.repeat) return;
-  if (G.noteOpen) { if (e.code === 'KeyE' || e.code === 'Escape' || e.code === 'Space') closeNote(); return; }
-  if (G.paused || G.player.dead) return;
-  if (e.code === 'KeyE' && focusI) { if (focusI.hold) { holdI = focusI; holdT = 0; } else focusI.use(); }
-  if (e.code === 'KeyR') G.player.reload();
-  if (e.code === 'KeyF') G.player.toggleFlashlight();
-  if (e.code === 'KeyQ') G.player.cameraFlash();
+  press(cs[cs.length - 1]);
 });
-addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'KeyE') holdI = null; });
-addEventListener('mousemove', (e) => { if ((document.pointerLockElement === canvas || G.lockFailed) && !G.paused) G.player.look(e.movementX, e.movementY); });
+addEventListener('keyup', (e) => { codesOf(e).forEach((c) => (keys[c] = false)); if (e.code === 'KeyE' || (e.key || '').toLowerCase() === 'e') holdI = null; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+addEventListener('mousemove', (e) => { if (document.pointerLockElement === canvas && !G.paused) G.player.look(e.movementX, e.movementY); });
 canvas.addEventListener('mousedown', (e) => {
-  if (!G.started) return;
-  if (document.pointerLockElement !== canvas && !G.lockFailed) { lock(); return; }
+  if (!G.started || G.touch) return;
+  if (document.pointerLockElement !== canvas) { lock(); return; }
   if (G.noteOpen) { closeNote(); return; }
   if (e.button === 0) G.player.shoot();
   if (e.button === 2) G.player.cameraFlash();
 });
 addEventListener('contextmenu', (e) => e.preventDefault());
-// se o navegador/iframe bloquear a captura do mouse, o jogo segue com o cursor livre
-function lockFail() { if (G.lockFailed) return; G.lockFailed = true; G.paused = false; ui.pause.classList.add('hidden'); canvas.style.cursor = 'crosshair'; G.audio.suspend(false); }
+
+// captura do mouse: sempre pedida dentro de um clique/tecla; se falhar, o jogo pausa e pede outro clique
 function lock() {
-  if (G.lockFailed) return;
-  try {
-    const r = canvas.requestPointerLock({ unadjustedMovement: true });
-    if (r && r.catch) r.catch(() => { try { const r2 = canvas.requestPointerLock(); if (r2 && r2.catch) r2.catch(lockFail); } catch (e) { lockFail(); } });
-  } catch (e) { lockFail(); }
+  if (G.touch || params.has('nolock')) return;
+  try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => showPause()); } catch (e) { showPause(); }
 }
-document.addEventListener('pointerlockerror', lockFail);
+function showPause() { if (!G.started || G.finished || G.touch) return; G.paused = true; ui.pause.classList.toggle('hidden', G.player.dead); G.audio.suspend(true); }
+document.addEventListener('pointerlockerror', showPause);
 document.addEventListener('pointerlockchange', () => {
+  if (!G.started || G.finished || G.touch || params.has('nolock')) return;
   const locked = document.pointerLockElement === canvas;
-  if (!G.started || G.finished || G.lockFailed) return;
-  G.paused = !locked && !params.has('nolock');
-  ui.pause.classList.toggle('hidden', !G.paused || G.player.dead);
-  G.audio.suspend(G.paused);
+  G.paused = !locked;
+  ui.pause.classList.toggle('hidden', locked || G.player.dead);
+  G.audio.suspend(!locked);
 });
-$('#btnResume').addEventListener('click', () => { lock(); });
-const toggleFull = () => { if (document.fullscreenElement) document.exitFullscreen(); else { const r = document.documentElement.requestFullscreen && document.documentElement.requestFullscreen({ navigationUI: 'hide' }); if (r && r.then) r.then(() => { if (G.started) lock(); }).catch(() => {}); } };
-$('#btnFull2').addEventListener('click', toggleFull);
-let wantFull = true;
+const resume = () => { ui.pause.classList.add('hidden'); if (G.touch) { G.paused = false; G.audio.suspend(false); } else lock(); };
+$('#btnResume').addEventListener('click', resume);
+
+// tela cheia: entra e sai quando quiser (botão ou tecla T)
+const FSE = document.documentElement;
+const canFS = !!(FSE.requestFullscreen || FSE.webkitRequestFullscreen);
+const isFS = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+function enterFS() { const f = FSE.requestFullscreen || FSE.webkitRequestFullscreen; try { const r = f.call(FSE, { navigationUI: 'hide' }); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+function exitFS() { const f = document.exitFullscreen || document.webkitExitFullscreen; try { const r = f && f.call(document); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+function toggleFull() { if (!canFS) return; if (isFS()) exitFS(); else enterFS(); if (G.started && !G.touch && !G.paused) lock(); }
+const fsLabel = () => document.querySelectorAll('.fsState').forEach((b) => (b.textContent = isFS() ? 'SAIR DA TELA CHEIA' : 'ENTRAR EM TELA CHEIA'));
+document.addEventListener('fullscreenchange', fsLabel); document.addEventListener('webkitfullscreenchange', fsLabel);
+$('#btnFull2').addEventListener('click', () => { toggleFull(); });
+let wantFull = !isTouch && canFS;
 $('#btnFull').addEventListener('click', () => { wantFull = !wantFull; $('#btnFull b').textContent = wantFull ? 'LIGADA' : 'DESLIGADA'; });
+$('#btnFull b').textContent = wantFull ? 'LIGADA' : 'DESLIGADA';
+if (!canFS) document.body.classList.add('nofs');
 const openControls = () => $('#controls').classList.remove('hidden');
 $('#btnControls').addEventListener('click', openControls); $('#btnControls2').addEventListener('click', openControls);
 $('#btnCloseControls').addEventListener('click', () => $('#controls').classList.add('hidden'));
@@ -264,7 +296,50 @@ const bindOpt = (ids, apply) => { const els = ids.map((i) => $(i)); els.forEach(
 bindOpt(['#optSens', '#optSens2'], (v) => (G.sens = v));
 bindOpt(['#optBright', '#optBright2'], (v) => (G.brightness = v));
 bindOpt(['#optVol', '#optVol2'], (v) => { G.volume = v; if (G.audio.master) G.audio.master.gain.value = 0.9 * v; });
+document.querySelectorAll('.optQ').forEach((sel) => { sel.value = G.quality; sel.addEventListener('change', () => { setQuality(sel.value); document.querySelectorAll('.optQ').forEach((o) => (o.value = sel.value)); }); });
 ui.dead.addEventListener('click', () => { ui.dead.classList.add('hidden'); G.story.restore(); G.post.u.blackout.value = 0; lock(); });
+
+// ---------------------------------------------------------------- controles de toque (celular)
+if (isTouch) {
+  const stick = $('#stick'), knob = $('#stick i');
+  let moveId = null, lookId = null, mx0 = 0, my0 = 0, lx = 0, ly = 0;
+  const T = G.touchState = { x: 0, y: 0, run: false };
+  const zone = $('#touch');
+  zone.addEventListener('touchstart', (e) => {
+    for (const t of e.changedTouches) {
+      if (t.target.closest('.tb')) continue;
+      if (t.clientX < innerWidth * 0.42 && moveId === null) { moveId = t.identifier; mx0 = t.clientX; my0 = t.clientY; stick.style.left = mx0 + 'px'; stick.style.top = my0 + 'px'; stick.classList.add('on'); }
+      else if (lookId === null) { lookId = t.identifier; lx = t.clientX; ly = t.clientY; }
+    }
+    e.preventDefault();
+  }, { passive: false });
+  zone.addEventListener('touchmove', (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === moveId) {
+        let dx = t.clientX - mx0, dy = t.clientY - my0; const l = Math.hypot(dx, dy), R = 55;
+        if (l > R) { dx *= R / l; dy *= R / l; }
+        T.x = dx / R; T.y = dy / R; knob.style.transform = `translate(${dx}px, ${dy}px)`;
+      } else if (t.identifier === lookId && !G.paused) { G.player.look((t.clientX - lx) * 2.2, (t.clientY - ly) * 2.2); lx = t.clientX; ly = t.clientY; }
+    }
+    e.preventDefault();
+  }, { passive: false });
+  const end = (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === moveId) { moveId = null; T.x = T.y = 0; knob.style.transform = ''; stick.classList.remove('on'); }
+      if (t.identifier === lookId) lookId = null;
+    }
+  };
+  zone.addEventListener('touchend', end); zone.addEventListener('touchcancel', end);
+  const btn = (id, down, up) => { const b = $(id); b.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); b.classList.add('down'); down(); }, { passive: false }); b.addEventListener('touchend', (e) => { e.preventDefault(); b.classList.remove('down'); up && up(); }); };
+  btn('#tShoot', () => { if (!G.paused) G.player.shoot(); });
+  btn('#tFlash', () => press('KeyQ'));
+  btn('#tUse', () => press('KeyE'), () => (holdI = null));
+  btn('#tLight', () => press('KeyF'));
+  btn('#tReload', () => press('KeyR'));
+  btn('#tRun', () => { T.run = !T.run; $('#tRun').classList.toggle('active', T.run); });
+  btn('#tPause', () => { if (G.started) { G.paused = true; ui.pause.classList.remove('hidden'); G.audio.suspend(true); } });
+  $('#note').addEventListener('touchstart', () => G.noteOpen && closeNote());
+}
 
 // ---------------------------------------------------------------- loops de mundo
 G.startWorldLoops = () => {
@@ -305,7 +380,7 @@ G.finish = () => {
       document.exitPointerLock();
       ui.title.classList.remove('hidden');
       ui.title.querySelector('.file').textContent = 'FIM DA GRAVAÇÃO · OBRIGADO POR JOGAR';
-      ui.title.querySelector('.warn').textContent = 'Texturas e modelos: Poly Haven e ambientCG (CC0). Cabeça escaneada: Lee Perry-Smith por Infinite-Realities (CC BY 3.0). Motor: three.js.';
+      ui.title.querySelector('.warn').textContent = 'Texturas e modelos: Poly Haven e ambientCG (CC0). Cabeça escaneada: Lee Perry-Smith por Infinite-Realities (CC BY 3.0). Sons: Oculus Audio Pack 01 por Oculus VR, LLC (CC BY 4.0). Corpo: Reallusion iClone (3D Warehouse). Motor: three.js.';
       ui.title.querySelector('button').textContent = 'JOGAR NOVAMENTE';
       ui.title.querySelector('button').onclick = () => location.reload();
     }, 5);
@@ -314,22 +389,21 @@ G.finish = () => {
 
 // ---------------------------------------------------------------- início
 $('#start').addEventListener('click', start);
-async function start() {
-  await G.ready;
+function start() {
+  if (!G.player) return;
   G.audio.init(); if (G.audio.master) G.audio.master.gain.value = 0.9 * G.volume;
+  if (G.assets.sfxRaw && !G.samplesLoading) { G.samplesLoading = true; G.audio.loadSamples(G.assets.sfxRaw); }
   ui.title.classList.add('hidden');
-  if (wantFull && !params.has('nolock') && document.documentElement.requestFullscreen) {
-    try { await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch (e) { /* iframe pode bloquear */ }
-  }
+  if (wantFull && !params.has('nolock')) enterFS();
   lock();
   const jump = params.get('step');
   const go = () => {
-    G.started = true; G.paused = !(document.pointerLockElement === canvas) && !params.has('nolock') && !G.lockFailed;
+    G.started = true;
+    G.paused = !G.touch && !params.has('nolock') && document.pointerLockElement !== canvas;
     ui.hud.classList.remove('hidden');
+    if (G.touch) $('#touch').classList.remove('hidden');
     G.startWorldLoops();
-    if (jump && G.story.steps[jump]) {
-      G.story.checkpoint = jump; G.story.restore();
-    } else G.story.go('arrive');
+    if (jump && G.story.steps[jump]) { G.story.checkpoint = jump; G.story.restore(); } else G.story.go('arrive');
     if (G.paused) ui.pause.classList.remove('hidden');
   };
   if (jump || params.has('skip')) go();
@@ -339,7 +413,7 @@ async function start() {
     'A Cabo Inês Duarte, da Polícia Militar, foi enviada para verificar a residência.\n\nEsta é a gravação da câmera corporal dela.',
   ], go);
 }
-if (params.has('auto')) start();
+if (params.has('auto')) G.ready.then(start);
 
 // ---------------------------------------------------------------- loop
 const clock = new THREE.Clock();
@@ -372,10 +446,10 @@ function step(dt) {
   // proximidade das entidades => interferência, tensão, lanterna falhando
   let near = 99;
   for (const c of G.creatures) if (c.active && c.state !== 'idle' && c.state !== 'hidden' && c.state !== 'die') near = Math.min(near, c.pos.distanceTo(P.pos));
-  const prox = THREE.MathUtils.clamp(1 - near / 8, 0, 1);
+  const prox = THREE.MathUtils.clamp(1 - near / 4.5, 0, 1);
   G.combat = G.creatures.some(c => c.active && ['chase', 'hunt', 'drop', 'emerge', 'flee'].includes(c.state) && c.pos.distanceTo(P.pos) < 14) || (G.mother.state === 'ceiling' && G.mother.active);
   G.flickerT = Math.max(0, G.flickerT - dt);
-  G.flicker = (prox > 0.35 && Math.random() < prox * dt * 3) ? 0.25 : Math.max(0, G.flicker - dt);
+  G.flicker = (prox > 0.5 && Math.random() < prox * dt * 1.5) ? 0.15 : Math.max(0, G.flicker - dt);
   if (G.flickerT > 0) G.flicker = 0.2;
   if (G.scareFx > 0.5) G.flicker = 0.3;
   const PL = G.player; if (G.scareExposure) PL.flashlight.intensity *= 0.5;
@@ -397,6 +471,8 @@ function step(dt) {
   // medição: lanterna muito perto de uma superfície estouraria a imagem -> ganho cai
   const bd = P.bounce.intensity > 0 ? P.bounce.position.distanceTo(camera.position) : 9;
   if (P.flashlightOn) target *= THREE.MathUtils.lerp(G.lightsOn && inside > 0.5 ? 0.6 : 0.45, 1, THREE.MathUtils.clamp((bd - 0.5) / 2.5, 0, 1));
+  // criatura perto da lente também fecha o diafragma
+  for (const cr of G.creatures) if (cr.active && cr.state !== 'hidden') { const dd = cr.aimPoint().distanceTo(camera.position); if (dd < 2.2) target *= THREE.MathUtils.lerp(0.42, 1, THREE.MathUtils.clamp((dd - 0.5) / 1.7, 0, 1)); }
   G.exposure += (target - G.exposure) * Math.min(1, dt * (G.exposure > target ? 4 : 1.1));
   if (G.flashT > 0) G.exposure = 0.45;
   if (G.scareExposure) G.exposure = G.scareExposure;
@@ -404,8 +480,7 @@ function step(dt) {
   u.grain.value = 0.045 + (G.exposure - 0.9) * 0.05;
   u.flash.value = Math.max(0, G.flashT / 0.18) * 0.85;
   u.damage.value = P.damageFx;
-  u.interference.value = G.scareExposure ? G.scareFx : Math.max(prox * prox * 0.6, P.dead ? 0.8 : 0, G.flickerT > 0 ? 0.4 : 0, G.scareFx * 0.9);
-  G.post.after.uniforms.damp.value = 0.38 + G.scareFx * 0.5;
+  u.interference.value = G.scareExposure ? G.scareFx : Math.max(prox * prox * 0.3, P.dead ? 0.8 : 0, G.flickerT > 0 ? 0.2 : 0, G.scareFx * 0.9);
   scene.environmentIntensity = inside > 0.5 ? (G.lightsOn ? 0.35 : 0.12) : 0.5;
   u.saturation.value = G.lightsOn ? 0.8 : 0.6;
   hemi.intensity = inside > 0.5 ? 0.12 : 0.3;
@@ -453,7 +528,7 @@ function step(dt) {
     if (holdI !== focusI) holdI = null;
     else { holdT += dt; if (holdT >= holdI.hold) { const h = holdI; holdI = null; h.use(); } }
   }
-  ui.prompt.textContent = focusI ? `[E] ${focusI.label}` : '';
+  ui.prompt.textContent = focusI ? (G.touch ? `[USAR] ${focusI.label}` : `[E] ${focusI.label}`) : '';
   ui.hold.style.display = holdI ? 'block' : 'none';
   if (holdI) ui.holdBar.style.width = (holdT / holdI.hold * 100) + '%';
 

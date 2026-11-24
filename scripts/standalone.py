@@ -6,8 +6,8 @@ css = open(glob.glob(f'{D}/assets/index-*.css')[0]).read()
 js = open(glob.glob(f'{D}/assets/index-*.js')[0]).read().replace('</script', '<\\/script')
 uri = lambda f: 'data:image/jpeg;base64,' + base64.b64encode(open(f, 'rb').read()).decode()
 files, models = {}, {}
-for f in glob.glob(f'{D}/assets/tex/*/*.jpg') + glob.glob(f'{D}/assets/human/*.jpg') + glob.glob(f'{D}/assets/hdr/*.jpg'):
-    files[f[len(D) + 8:]] = uri(f)
+for f in glob.glob(f'{D}/assets/tex/*/*.jpg') + glob.glob(f'{D}/assets/human/*.jpg') + glob.glob(f'{D}/assets/hdr/*.jpg') + glob.glob(f'{D}/assets/sfx/*.mp3'):
+    files[f[len(D) + 8:]] = uri(f).replace('image/jpeg', 'audio/mpeg') if f.endswith('.mp3') else uri(f)
 for f in glob.glob(f'{D}/assets/models/*/*.json') + glob.glob(f'{D}/assets/human/*.json'):
     j = json.load(open(f)); d = os.path.dirname(f)
     for im in j.get('images', []):

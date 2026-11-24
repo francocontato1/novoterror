@@ -1,19 +1,19 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: #000; color: #ddd; font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+html, body { width: 100%; height: 100%; height: 100dvh; overflow: hidden; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; background: #000; color: #ddd; font-family: 'IBM Plex Mono', ui-monospace, monospace; }
 canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 .hidden { display: none !important; }
 
 #hud { position: fixed; inset: 0; pointer-events: none; text-shadow: 0 0 4px rgba(0,0,0,.9); }
-#rec { position: absolute; top: 22px; left: 26px; font-size: 15px; letter-spacing: 2px; color: #eee; display: flex; align-items: center; gap: 8px; opacity: .85; }
+#rec { position: absolute; top: calc(22px + env(safe-area-inset-top)); left: calc(26px + env(safe-area-inset-left)); font-size: 15px; letter-spacing: 2px; color: #eee; display: flex; align-items: center; gap: 8px; opacity: .85; }
 #rec .dot { width: 11px; height: 11px; border-radius: 50%; background: #e01b1b; box-shadow: 0 0 8px #f00; animation: blink 1.2s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
-#camid { position: absolute; top: 22px; right: 26px; font-size: 12px; letter-spacing: 1.5px; opacity: .7; }
-#stamp { position: absolute; bottom: 22px; right: 26px; font-size: 14px; letter-spacing: 1px; opacity: .8; }
-#batt { position: absolute; top: 44px; right: 26px; display: flex; gap: 2px; border: 1px solid rgba(255,255,255,.6); padding: 2px; opacity: .6; }
+#camid { position: absolute; top: calc(22px + env(safe-area-inset-top)); right: calc(26px + env(safe-area-inset-right)); font-size: 12px; letter-spacing: 1.5px; opacity: .7; }
+#stamp { position: absolute; bottom: calc(22px + env(safe-area-inset-bottom)); right: calc(26px + env(safe-area-inset-right)); font-size: 14px; letter-spacing: 1px; opacity: .8; }
+#batt { position: absolute; top: calc(44px + env(safe-area-inset-top)); right: calc(26px + env(safe-area-inset-right)); display: flex; gap: 2px; border: 1px solid rgba(255,255,255,.6); padding: 2px; opacity: .6; }
 #batt i { width: 7px; height: 8px; background: #ddd; }
 #batt i.off { background: transparent; }
 
-#objective { position: absolute; top: 58px; left: 26px; max-width: 380px; opacity: 0; transition: opacity 1.2s; }
+#objective { position: absolute; top: calc(58px + env(safe-area-inset-top)); left: calc(26px + env(safe-area-inset-left)); max-width: 380px; opacity: 0; transition: opacity 1.2s; }
 #objective.show { opacity: .92; }
 #objective small { display: block; font-size: 10px; letter-spacing: 3px; color: #c9b27a; margin-bottom: 3px; }
 #objective span { font-size: 14px; color: #f2f2f2; }
@@ -21,9 +21,9 @@ canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block;
 #objective.urgent span { color: #ffdcd6; animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .55; } }
 
-#ammo { position: absolute; bottom: 22px; left: 26px; font-size: 13px; opacity: .75; }
+#ammo { position: absolute; bottom: calc(22px + env(safe-area-inset-bottom)); left: calc(26px + env(safe-area-inset-left)); font-size: 13px; opacity: .75; }
 #ammo b { font-size: 22px; font-weight: 600; margin-right: 4px; }
-#flashc { position: absolute; bottom: 52px; left: 26px; font-size: 10px; letter-spacing: 2px; opacity: .65; display: flex; align-items: center; gap: 8px; }
+#flashc { position: absolute; bottom: calc(52px + env(safe-area-inset-bottom)); left: calc(26px + env(safe-area-inset-left)); font-size: 10px; letter-spacing: 2px; opacity: .65; display: flex; align-items: center; gap: 8px; }
 #flashc i { width: 70px; height: 4px; background: rgba(255,255,255,.15); display: block; }
 #flashc em { display: block; height: 100%; width: 100%; background: #e8e8e8; }
 #cross { position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; margin: -1.5px; border-radius: 50%; background: rgba(255,255,255,.55); }
@@ -97,3 +97,34 @@ button b { color: #fff; }
 #pause .inner { text-align: center; }
 #pause h2 { font-weight: 400; letter-spacing: 10px; margin-bottom: 26px; }
 #pause { cursor: default; }
+
+#title, #pause, #dead, #controls, #cards { padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+#title { overflow-y: auto; }
+.opts select { background: #111; color: #ddd; border: 1px solid #444; padding: 6px 8px; font-family: inherit; font-size: 11px; }
+#pause .hint { font-size: 12px; letter-spacing: 1px; opacity: .7; margin: -10px 0 22px; }
+.iosTip { display: none; font-size: 11px; opacity: .6; margin: -8px auto 16px; max-width: 420px; line-height: 1.5; }
+body.nofs .fsOnly { display: none; }
+body.nofs.touch .iosTip { display: block; }
+
+/* controles de toque */
+#touch { position: fixed; inset: 0; z-index: 3; touch-action: none; }
+#stick { position: absolute; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.05); opacity: 0; transition: opacity .15s; pointer-events: none; left: 120px; top: 70%; }
+#stick.on { opacity: 1; }
+#stick i { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px; border-radius: 50%; background: rgba(255,255,255,.35); }
+.tb { position: absolute; display: flex; align-items: center; justify-content: center; min-width: 64px; height: 44px; padding: 0 10px; border: 1px solid rgba(255,255,255,.35); border-radius: 22px; background: rgba(0,0,0,.35); color: #eee; font-size: 10px; letter-spacing: 1px; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+.tb.down, .tb.active { background: rgba(160,20,20,.55); border-color: #c22; }
+.tb.big { width: 84px; height: 84px; border-radius: 50%; font-size: 11px; right: calc(22px + env(safe-area-inset-right)); bottom: calc(70px + env(safe-area-inset-bottom)); }
+#tFlash { right: calc(118px + env(safe-area-inset-right)); bottom: calc(150px + env(safe-area-inset-bottom)); }
+#tUse { right: calc(118px + env(safe-area-inset-right)); bottom: calc(92px + env(safe-area-inset-bottom)); }
+#tReload { right: calc(22px + env(safe-area-inset-right)); bottom: calc(166px + env(safe-area-inset-bottom)); }
+#tRun { left: calc(20px + env(safe-area-inset-left)); bottom: calc(96px + env(safe-area-inset-bottom)); }
+#tLight { right: calc(22px + env(safe-area-inset-right)); top: calc(70px + env(safe-area-inset-top)); }
+#tPause { right: calc(140px + env(safe-area-inset-right)); top: calc(70px + env(safe-area-inset-top)); min-width: 44px; }
+body.touch #ammo { bottom: calc(22px + env(safe-area-inset-bottom)); }
+body.touch #stamp, body.touch #batt { display: none; }
+body.touch #subs { bottom: calc(30% + env(safe-area-inset-bottom)); font-size: 14px; }
+body.touch #prompt { top: 50%; margin-top: 30px; }
+@media (max-height: 500px) { #title h1 { font-size: 44px; } #title .tag { margin: 4px 0 14px; } .menu { gap: 6px; margin-bottom: 10px; } #title .file { margin-bottom: 10px; } }
+
+#cross.hit { animation: hitm .35s; }
+@keyframes hitm { 0% { background: #ff2a2a; box-shadow: 0 0 0 6px rgba(255,40,40,.5), 0 0 14px #f00; transform: scale(2.2); } 100% { background: rgba(255,255,255,.55); box-shadow: none; transform: none; } }
