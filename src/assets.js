@@ -22,28 +22,32 @@ export async function loadAssets(renderer, onProgress) {
   const gl = new GLTFLoader(manager);
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const A = { tex: {}, models: {}, env: null, head: null, headMaps: {} };
+  // versão de arquivo único: os recursos vêm embutidos na própria página
+  const EMB = window.__EMBED;
+  const U = (p) => (EMB && EMB.files[p]) || BASE + p;
+  const loadModel = (p, ok, fail) => (EMB && EMB.models[p] ? gl.parse(EMB.models[p], '', ok, fail) : gl.load(BASE + p, ok, undefined, fail));
 
   const loadTex = (url, srgb) => { total++; return new Promise((res) => tl.load(url, (t) => { t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = aniso; tick(); res(t); }, undefined, () => { tick(); res(null); })); };
   const jobs = [];
   for (const n of TEXTURES) {
-    jobs.push(Promise.all([loadTex(`${BASE}tex/${n}/diff.jpg`, true), loadTex(`${BASE}tex/${n}/nor_gl.jpg`, false), loadTex(`${BASE}tex/${n}/rough.jpg`, false)])
+    jobs.push(Promise.all([loadTex(U(`tex/${n}/diff.jpg`), true), loadTex(U(`tex/${n}/nor_gl.jpg`), false), loadTex(U(`tex/${n}/rough.jpg`), false)])
       .then(([map, normalMap, roughnessMap]) => { A.tex[n] = { map, normalMap, roughnessMap }; }));
   }
   for (const n of MODELS) {
     total++;
-    jobs.push(new Promise((res) => gl.load(`${BASE}models/${n}/${n}.json`, (g) => {
+    jobs.push(new Promise((res) => loadModel(`models/${n}/${n}.json`, (g) => {
       g.scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (o.material.map) o.material.map.anisotropy = aniso; } });
       A.models[n] = g.scene; tick(); res();
-    }, undefined, (e) => { console.warn('modelo', n, e); tick(); res(); })));
+    }, (e) => { console.warn('modelo', n, e); tick(); res(); })));
   }
   total++;
-  jobs.push(new Promise((res) => gl.load(`${BASE}human/LeePerrySmith.json`, (g) => { g.scene.traverse((o) => { if (o.isMesh && !A.head) A.head = o; }); tick(); res(); }, undefined, () => { tick(); res(); })));
-  jobs.push(loadTex(`${BASE}human/head_col.jpg`, true).then((t) => (A.headMaps.map = t)));
-  jobs.push(loadTex(`${BASE}human/head_nor.jpg`, false).then((t) => (A.headMaps.normalMap = t)));
-  jobs.push(loadTex(`${BASE}human/head_spec.jpg`, false).then((t) => (A.headMaps.spec = t)));
+  jobs.push(new Promise((res) => loadModel('human/LeePerrySmith.json', (g) => { g.scene.traverse((o) => { if (o.isMesh && !A.head) A.head = o; }); tick(); res(); }, () => { tick(); res(); })));
+  jobs.push(loadTex(U('human/head_col.jpg'), true).then((t) => (A.headMaps.map = t)));
+  jobs.push(loadTex(U('human/head_nor.jpg'), false).then((t) => (A.headMaps.normalMap = t)));
+  jobs.push(loadTex(U('human/head_spec.jpg'), false).then((t) => (A.headMaps.spec = t)));
   total++;
   // céu noturno equiretangular (Poly Haven, convertido para JPG) -> mapa de ambiente pré-filtrado
-  jobs.push(loadTex(`${BASE}hdr/night.jpg`, true).then((t) => {
+  jobs.push(loadTex(U('hdr/night.jpg'), true).then((t) => {
     if (!t) return;
     t.mapping = THREE.EquirectangularReflectionMapping;
     const pm = new THREE.PMREMGenerator(renderer); A.env = pm.fromEquirectangular(t).texture; t.dispose(); pm.dispose();

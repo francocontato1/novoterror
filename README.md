@@ -23,6 +23,14 @@ Para gerar a versão final (pasta `dist/`, que pode ser hospedada em qualquer se
 npm run build
 ```
 
+### Versão de arquivo único
+
+Para gerar um único `PontoCego.html` que abre direto no navegador (duplo clique, sem servidor):
+
+```bash
+npm run build && python3 scripts/standalone.py
+```
+
 ### Controles
 
 | Tecla | Ação |
