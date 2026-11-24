@@ -38,7 +38,7 @@ npm run build
 
 ## Como foi feito
 
-Tudo é gerado por código, sem nenhum arquivo de imagem ou som externo.
+Som, iluminação, roteiro, criaturas e efeitos de câmera são gerados por código. As superfícies e os móveis usam material fotográfico escaneado de bibliotecas livres (veja **Créditos**).
 
 - **Fotografia**: shader de câmera corporal com lente grande-angular (distorção de barril), aberração cromática, ruído de sensor que cresce no escuro, exposição automática (o ganho cai quando a lanterna bate perto de uma parede), rastro de movimento em baixa luz, e interferência eletromagnética que aumenta quando uma entidade se aproxima.
 - **Luz**: toda luz tem uma fonte física. Lanterna com padrão de refletor e sombras reais, luz rebatida que simula a iluminação indireta, faróis da viatura atravessando as janelas, relâmpagos, lâmpadas incandescentes e velas.
@@ -64,3 +64,10 @@ src/textures.js   texturas procedurais
 ### Parâmetros de depuração na URL
 
 `?skip` pula a introdução · `?step=basement` começa num checkpoint (`arrive`, `phone`, `fuse`, `power`, `blackout`, `basement`, `escape`) · `?god` invencível · `?scale=0.7` reduz a resolução interna (para máquinas mais fracas) · `?sens=1.5` sensibilidade do mouse.
+
+## Créditos dos recursos
+
+- **Texturas e modelos 3D**: [Poly Haven](https://polyhaven.com) e [ambientCG](https://ambientcg.com), licença CC0 (domínio público), obtidos pelo espelho [zuujis-cc0](https://github.com/zuujis-cc0).
+- **Céu noturno HDR**: "Satara Night (no lamps)", Poly Haven, CC0.
+- **Cabeça humana escaneada**: "Lee Perry-Smith head" por [Infinite-Realities](https://www.ir-ltd.net/), licença [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), distribuída com os exemplos do three.js. No jogo ela é deformada para criar os rostos das entidades.
+- Motor: [three.js](https://threejs.org) (MIT).

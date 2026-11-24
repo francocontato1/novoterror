@@ -4,7 +4,8 @@ import { createPost } from './post.js';
 import { Audio } from './audio.js';
 import { buildLevel } from './level.js';
 import { Player } from './player.js';
-import { Crawler, Stalker, Credor, makeMats, buildHumanoid } from './creatures.js';
+import { Crawler, Stalker, Credor, makeMats, buildHumanoid, setCreatureAssets } from './creatures.js';
+import { loadAssets } from './assets.js';
 import { Story } from './story.js';
 import * as T from './textures.js';
 
@@ -34,19 +35,30 @@ const G = window.G = {
   exposure: 1.4, shakeV: 0,
 };
 G.audio = new Audio();
-G.cmats = makeMats();
-G.level = buildLevel(G);
-G.player = new Player(G);
-G.mother = new Crawler(G, G.cmats);
-G.father = new Stalker(G, G.cmats);
-G.credor = new Credor(G, G.cmats);
-G.creatures = [G.mother, G.father, G.credor];
+G.brightness = 1; G.volume = 1;
 G.post = createPost(renderer, scene, camera);
 { // a arma é desenhada por cima, com o buffer de profundidade limpo
   const gp = new RenderPass(gunScene, camera); gp.clear = false; gp.clearDepth = true;
   G.post.composer.insertPass(gp, 1);
 }
-G.story = new Story(G);
+G.ready = (async () => {
+  G.assets = await loadAssets(renderer, (k) => { const e = document.querySelector('#loading em'); if (e) e.style.width = (k * 100).toFixed(0) + '%'; });
+  setCreatureAssets(G.assets);
+  if (G.assets.env) { scene.environment = G.assets.env; scene.environmentIntensity = 0.25; }
+  G.cmats = makeMats();
+  G.level = buildLevel(G);
+  G.player = new Player(G);
+  G.mother = new Crawler(G, G.cmats);
+  G.father = new Stalker(G, G.cmats);
+  G.credor = new Credor(G, G.cmats);
+  G.creatures = [G.mother, G.father, G.credor];
+  G.story = new Story(G);
+  G.player.setInput(keys);
+  // compila os shaders antes de começar (evita travadas no primeiro susto)
+  renderer.compile(scene, camera);
+  document.querySelector('#loading').classList.add('hidden');
+  const b = document.querySelector('#start'); b.disabled = false; b.focus();
+})();
 
 const RS = Math.min(devicePixelRatio, 1.5) * Number(params.get('scale') || 1);
 function resize() {
@@ -106,6 +118,22 @@ G.spawnBlood = (point, normal, color = 0x5a0000) => {
   const fy = G.level.floorY(point.x, point.z);
   placeDecal(T.bloodSplat(Math.floor(Math.random() * 30), 'splat'), 0.5 + Math.random() * 0.4, V(point.x + (Math.random() - 0.5) * 0.4, fy + 0.008, point.z + (Math.random() - 0.5) * 0.4), V(0, 1, 0), { rough: 0.2, color: color === 0x5a0000 ? 0xffffff : 0x222222 });
 };
+// pó caindo do forro
+G.ceilingDust = (x, z, n = 40) => {
+  for (let i = 0; i < n; i++) {
+    const sp = new THREE.Sprite(sparkMat.clone()); sp.material.color.set(0x8a8070); sp.material.opacity = 0.6; sp.scale.setScalar(0.012 + Math.random() * 0.02);
+    sp.position.set(x + (Math.random() - 0.5) * 0.6, 2.66, z + (Math.random() - 0.5) * 0.6); scene.add(sp);
+    particles.push({ s: sp, v: V((Math.random() - 0.5) * 0.1, -0.2 - Math.random() * 0.6, (Math.random() - 0.5) * 0.1), life: 2.5 + Math.random() * 2, g: 0.08 });
+  }
+  G.audio.noiseBurst(G.audio.dest(V(x, 2.6, z)), { dur: 0.6, type: 'highpass', f: 3000, peak: 0.12, buf: G.audio.pink });
+};
+// uma gota de sangue cai do teto ao seu lado
+G.bloodDrip = (x, z) => {
+  const sp = new THREE.Sprite(sparkMat.clone()); sp.material.color.set(0x5a0000); sp.scale.set(0.02, 0.035, 1); sp.position.set(x, 2.65, z); scene.add(sp);
+  particles.push({ s: sp, v: V(0, 0, 0), life: 0.72, g: 1 });
+  setTimeout(() => { placeDecal(T.bloodSplat(77, 'splat'), 0.18, V(x, G.level.floorY(x, z) + 0.008, z), V(0, 1, 0), { rough: 0.15 }); const d = G.audio.dest(V(x, 0.1, z)); G.audio.tone(d, { f: 700, fEnd: 1400, dur: 0.06, peak: 0.5 }); G.audio.noiseBurst(d, { dur: 0.05, f: 2500, q: 2, peak: 0.25 }); }, 720);
+};
+G.scareFx = 0;
 G.shake = (a) => { G.player.shakeAmt = Math.min(1.5, G.player.shakeAmt + a); };
 G.alertAll = () => {};
 G.flickerBulbs = (dur) => G.level.bulbs.forEach(b => (b.flicker = dur * (0.6 + Math.random() * 0.6)));
@@ -185,7 +213,6 @@ function cards(lines, done, each = 4.2) {
 
 // ---------------------------------------------------------------- input
 const keys = {};
-G.player.setInput(keys);
 let holdI = null, holdT = 0, focusI = null;
 addEventListener('keydown', (e) => {
   if (!G.started) return;
@@ -225,7 +252,18 @@ document.addEventListener('pointerlockchange', () => {
   ui.pause.classList.toggle('hidden', !G.paused || G.player.dead);
   G.audio.suspend(G.paused);
 });
-ui.pause.addEventListener('click', lock);
+$('#btnResume').addEventListener('click', () => { lock(); });
+const toggleFull = () => { if (document.fullscreenElement) document.exitFullscreen(); else { const r = document.documentElement.requestFullscreen && document.documentElement.requestFullscreen({ navigationUI: 'hide' }); if (r && r.then) r.then(() => { if (G.started) lock(); }).catch(() => {}); } };
+$('#btnFull2').addEventListener('click', toggleFull);
+let wantFull = true;
+$('#btnFull').addEventListener('click', () => { wantFull = !wantFull; $('#btnFull b').textContent = wantFull ? 'LIGADA' : 'DESLIGADA'; });
+const openControls = () => $('#controls').classList.remove('hidden');
+$('#btnControls').addEventListener('click', openControls); $('#btnControls2').addEventListener('click', openControls);
+$('#btnCloseControls').addEventListener('click', () => $('#controls').classList.add('hidden'));
+const bindOpt = (ids, apply) => { const els = ids.map((i) => $(i)); els.forEach((el) => el.addEventListener('input', () => { els.forEach((o) => (o.value = el.value)); apply(Number(el.value)); })); };
+bindOpt(['#optSens', '#optSens2'], (v) => (G.sens = v));
+bindOpt(['#optBright', '#optBright2'], (v) => (G.brightness = v));
+bindOpt(['#optVol', '#optVol2'], (v) => { G.volume = v; if (G.audio.master) G.audio.master.gain.value = 0.9 * v; });
 ui.dead.addEventListener('click', () => { ui.dead.classList.add('hidden'); G.story.restore(); G.post.u.blackout.value = 0; lock(); });
 
 // ---------------------------------------------------------------- loops de mundo
@@ -267,6 +305,7 @@ G.finish = () => {
       document.exitPointerLock();
       ui.title.classList.remove('hidden');
       ui.title.querySelector('.file').textContent = 'FIM DA GRAVAÇÃO · OBRIGADO POR JOGAR';
+      ui.title.querySelector('.warn').textContent = 'Texturas e modelos: Poly Haven e ambientCG (CC0). Cabeça escaneada: Lee Perry-Smith por Infinite-Realities (CC BY 3.0). Motor: three.js.';
       ui.title.querySelector('button').textContent = 'JOGAR NOVAMENTE';
       ui.title.querySelector('button').onclick = () => location.reload();
     }, 5);
@@ -275,9 +314,13 @@ G.finish = () => {
 
 // ---------------------------------------------------------------- início
 $('#start').addEventListener('click', start);
-function start() {
-  G.audio.init();
+async function start() {
+  await G.ready;
+  G.audio.init(); if (G.audio.master) G.audio.master.gain.value = 0.9 * G.volume;
   ui.title.classList.add('hidden');
+  if (wantFull && !params.has('nolock') && document.documentElement.requestFullscreen) {
+    try { await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch (e) { /* iframe pode bloquear */ }
+  }
   lock();
   const jump = params.get('step');
   const go = () => {
@@ -334,6 +377,8 @@ function step(dt) {
   G.flickerT = Math.max(0, G.flickerT - dt);
   G.flicker = (prox > 0.35 && Math.random() < prox * dt * 3) ? 0.25 : Math.max(0, G.flicker - dt);
   if (G.flickerT > 0) G.flicker = 0.2;
+  if (G.scareFx > 0.5) G.flicker = 0.3;
+  const PL = G.player; if (G.scareExposure) PL.flashlight.intensity *= 0.5;
   const tension = Math.min(1, G.tensionBase + prox * 0.6);
   P.fear += ((Math.max(tension, (100 - P.health) / 100) * 0.9) - P.fear) * Math.min(1, dt * 1.5);
   const room = L.room(P.pos.x, P.pos.z);
@@ -351,14 +396,17 @@ function step(dt) {
   let target = G.lightsOn && inside > 0.5 ? 0.95 : (P.flashlightOn ? 1.3 : 2.1);
   // medição: lanterna muito perto de uma superfície estouraria a imagem -> ganho cai
   const bd = P.bounce.intensity > 0 ? P.bounce.position.distanceTo(camera.position) : 9;
-  if (P.flashlightOn && !(G.lightsOn && inside > 0.5)) target *= THREE.MathUtils.lerp(0.45, 1, THREE.MathUtils.clamp((bd - 0.5) / 2.5, 0, 1));
+  if (P.flashlightOn) target *= THREE.MathUtils.lerp(G.lightsOn && inside > 0.5 ? 0.6 : 0.45, 1, THREE.MathUtils.clamp((bd - 0.5) / 2.5, 0, 1));
   G.exposure += (target - G.exposure) * Math.min(1, dt * (G.exposure > target ? 4 : 1.1));
   if (G.flashT > 0) G.exposure = 0.45;
-  u.exposure.value = G.exposure;
+  if (G.scareExposure) G.exposure = G.scareExposure;
+  u.exposure.value = G.exposure * G.brightness;
   u.grain.value = 0.045 + (G.exposure - 0.9) * 0.05;
   u.flash.value = Math.max(0, G.flashT / 0.18) * 0.85;
   u.damage.value = P.damageFx;
-  u.interference.value = Math.max(prox * prox * 0.6, P.dead ? 0.8 : 0, G.flickerT > 0 ? 0.4 : 0);
+  u.interference.value = G.scareExposure ? G.scareFx : Math.max(prox * prox * 0.6, P.dead ? 0.8 : 0, G.flickerT > 0 ? 0.4 : 0, G.scareFx * 0.9);
+  G.post.after.uniforms.damp.value = 0.38 + G.scareFx * 0.5;
+  scene.environmentIntensity = inside > 0.5 ? (G.lightsOn ? 0.35 : 0.12) : 0.5;
   u.saturation.value = G.lightsOn ? 0.8 : 0.6;
   hemi.intensity = inside > 0.5 ? 0.12 : 0.3;
   scene.fog.density = room === 'porao' ? 0.07 : inside > 0.5 ? 0.045 : 0.035;
@@ -380,8 +428,8 @@ function step(dt) {
 
   // partículas
   for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i]; p.life -= dt; p.v.y -= 9.8 * dt; p.s.position.addScaledVector(p.v, dt);
-    p.s.material.opacity = Math.max(0, p.life * 2);
+    const p = particles[i]; p.life -= dt; p.v.y -= 9.8 * (p.g ?? 1) * dt; p.s.position.addScaledVector(p.v, dt);
+    p.s.material.opacity = Math.min(p.s.material.opacity, Math.max(0, p.life * 2));
     if (p.life <= 0) { scene.remove(p.s); p.s.material.dispose(); particles.splice(i, 1); }
   }
 

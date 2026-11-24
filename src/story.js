@@ -64,63 +64,103 @@ export class Story {
         G.mother.show(false); G.mother.hp = 3; G.mother.setState('hidden');
         this.placeFather();
         G.tensionBase = 0.2;
-        G.objective('Atender o telefone');
-        this.ring = A().loop('phone', L().props.phone.pos, 1.2);
+        G.objective('Atender o telefone (sala)');
+        this.ring = A().loop('phone', L().props.phone.pos, 1.3);
         this.flags.phoneAnswered = false;
       },
       update: () => {
-        if (this.flags.waitLook) {
-          this.waitT = (this.waitT || 0) + G.dt;
-          const look = P().pitch > 0.45 && G.mother.isSeen(G.mother.pos.clone().setY(2.4));
-          if (look || this.waitT > 7) { this.flags.waitLook = false; this.dropMother(); }
-        }
+        // o telefone treme na base enquanto toca
+        const ph = L().props.phone;
+        if (this.ring && ph.handset) { const on = (G.time % 3.6) < 1.1; ph.handset.position.y = 0.145 + (on ? Math.random() * 0.004 : 0); ph.handset.rotation.z = on ? (Math.random() - 0.5) * 0.04 : 0; }
       },
     };
 
-    // ------------------------------------------------------------ LUTA 1
-    S.fight1 = {
-      enter: () => {
-        G.objective('SOBREVIVA', true);
-        G.tensionBase = 0.6;
-        G.mother.fleeTo = V(15.3, 0, 7.0);
-        G.mother.onFlee = () => {
-          G.tensionBase = 0.25;
-          this.after(1.5, () => G.say('SD SILVA', 'Duarte! Ouvi disparos! Duarte, responde!', 3.2, 'radio'));
-          this.after(5, () => G.say('VOCÊ', 'Tinha alguém no teto... uma mulher. Ela andava de costas, Silva.', 3.8, 'self'));
-          this.after(9.3, () => G.say('SD SILVA', 'Sai daí. Eu tô chamando o reforço de novo.', 3, 'radio'));
-          this.after(12.5, () => G.say('VOCÊ', 'Ainda tem gente aqui dentro. Preciso de luz.', 3, 'self'));
-          this.after(13, () => this.go('fuse'));
-        };
-      },
-      update: () => {},
-    };
-
-    // ------------------------------------------------------------ FUSÍVEL
+    // ------------------------------------------------------------ SUSPENSE: "ela está em cima de você"
     S.fuse = {
-      cp: { pos: V(10.5, 0, 7), yaw: Math.PI / 2 },
+      cp: { pos: V(1.6, 0, 3.4), yaw: -Math.PI / 2 },
       enter: (respawn) => {
         G.lightsOn = false; this.hasFuse = false;
-        G.mother.show(false); G.mother.setState('hidden');
+        G.mother.show(false); G.mother.setState('hidden'); G.mother.hp = 3;
         this.placeFather();
         L().props.fuseItem.visible = true; L().props.fuseI.enabled = true;
-        G.objective('Encontrar um fusível');
-        G.tensionBase = 0.25;
+        G.tensionBase = 0.32;
         this.flags.ghostReady = true;
+        const cam = G.camera.position;
+        A().duck(0.25, 1.5);
+        // 1. silêncio... e o forro range exatamente em cima
+        this.after(respawn ? 0.5 : 2.2, () => { const p = P().pos; A().creak(V(p.x, 2.75, p.z), 1.6, 0.9, 0.6); G.ceilingDust(p.x + 0.3, p.z - 0.2, 60); });
+        this.after(respawn ? 2 : 4.2, () => { const p = P().pos; G.bloodDrip(p.x + 0.45, p.z + 0.25); });
+        this.after(7, () => { A().duck(1, 4); G.say('VOCÊ', 'Tem alguém no forro...', 2.4, 'self'); });
+        this.after(10, () => G.say('VOCÊ', 'O fusível. O Seu Antônio deve ter guardado no quarto.', 3.4, 'self'));
+        this.after(10.5, () => G.objective('Procurar um fusível no quarto do casal'));
+        // 2. algo se arrasta dentro do forro, da sala para o corredor
+        this.after(14, () => { for (let i = 0; i < 10; i++) setTimeout(() => A().skitter(V(4 - i * 0.2, 2.85, 3 + i * 0.45), 0.3, 0.55), i * 220); G.ceilingDust(3.5, 4.5, 30); });
       },
-      update: () => {
-        const p = P().pos, room = L().room(p.x, p.z);
+      update: (dt) => {
+        const p = P().pos, room = L().room(p.x, p.z), f = G.camera.userData.fwd;
+        // 3. passos que imitam os seus, atrás de você, no corredor
+        if (room === 'hall' && !this.flags.mimic) {
+          this.flags.mimic = true; let n = 0;
+          const step = () => {
+            if (this.cur !== 'fuse' || n++ > 5) return;
+            const pp = P().pos, moving = Math.hypot(P().vel.x, P().vel.z) > 0.4;
+            if (moving) { const ff = G.camera.userData.fwd; A().footstep('wood', V(pp.x - ff.x * 2.6, 0.05, pp.z - ff.z * 2.6), 0.6); }
+            setTimeout(step, 560);
+          };
+          setTimeout(step, 900);
+        }
+        // 4. vislumbre: atravessa o teto no fim do corredor e some
+        if (room === 'hall' && !this.flags.glimpse && this.flags.mimic && p.x > 7 && f.x < -0.85 && Math.abs(f.y) < 0.4) {
+          this.flags.glimpse = true; this.glimpse = { t: 0 };
+          G.mother.toCeiling(1.0, 6.5, 'ceiling'); G.mother.yaw = 0;
+          A().skitter(V(1.2, 2.6, 7), 0.8, 0.9);
+        }
+        if (this.glimpse) {
+          this.glimpse.t += dt; const g = this.glimpse.t;
+          G.mother.pos.set(1.0 + g * 0.5, 2.68, 6.4 + g * 3.2); G.mother.yaw = 0.2; G.mother.pose(G.time, 1); G.mother.sync();
+          if (g > 0.6) { G.mother.show(false); G.mother.setState('hidden'); this.glimpse = null; this.after(1.2, () => G.say('VOCÊ', 'Que porra foi essa...', 2, 'self')); }
+        }
+        // 5. o pai no canto do quarto
         if (!this.flags.sawFather && room === 'casal' && G.father.isSeen()) {
           this.flags.sawFather = true; G.tensionBase = 0.45;
           this.after(0.6, () => G.say('VOCÊ', 'Seu Antônio? ...O senhor tá ferido?', 3, 'self'));
           this.after(4, () => A().whisper(G.father.chest().clone(), 2.5, 0.7));
         }
-        if (this.hasFuse && G.father.state === 'idle' && !G.father.isSeen()) {
-          // vira as costas e ele some
-          G.father.headTurned = true; G.father.vanish(); G.father.setState('hunt');
-          A().boneCrack(p.clone().setY(1.6), 4); A().sting(false);
-          G.objective('Recolocar o fusível no quadro de luz (cozinha)');
+        // 6. pegou o fusível, virou as costas para sair... ela cai na sua frente
+        if (this.hasFuse && !this.flags.scared) {
+          this.fuseT = (this.fuseT || 0) + dt;
+          const ns = V(4.35, 1.2, 11.65), cam = G.camera.position;
+          const toNs = ns.clone().sub(cam).normalize();
+          if (this.fuseT > 0.9 && f.dot(toNs) < -0.1) {
+            this.flags.scared = true;
+            G.father.show(false); G.father.setState('idle');
+            this.faceScare(() => this.go('fight1'));
+          }
         }
       },
+    };
+
+    // ------------------------------------------------------------ LUTA 1: ela caça pelo teto
+    S.fight1 = {
+      cp: { pos: V(3, 0, 9.3), yaw: 0 },
+      enter: (respawn) => {
+        G.lightsOn = false; this.hasFuse = true;
+        L().props.fuseItem.visible = false; L().props.fuseI.enabled = false;
+        G.father.show(false); G.father.setState('idle');
+        G.objective('SOBREVIVA. Leve o fusível até o quadro de luz', true);
+        G.tensionBase = 0.55;
+        G.mother.fleeTo = V(15.3, 0, 7.0);
+        if (respawn) G.mother.hunt(14.5, 7);
+        else { const p = P().pos; G.mother.hunt(p.x, p.z); G.mother.retreatTo = V(13, 0, 7); G.mother.setState('ceilRetreat'); G.mother.atkCD = 3; }
+        G.mother.onFlee = () => {
+          G.tensionBase = 0.25;
+          this.after(1.5, () => G.say('SD SILVA', 'Duarte! Ouvi disparos! Duarte, responde!', 3.2, 'radio'));
+          this.after(5, () => G.say('VOCÊ', 'Uma mulher... andando no teto, Silva. No teto.', 3.6, 'self'));
+          this.after(9, () => G.say('SD SILVA', 'Sai daí. Eu tô chamando o reforço de novo.', 3, 'radio'));
+          this.after(10, () => { if (this.cur === 'fight1') G.objective('Recolocar o fusível no quadro de luz (cozinha)'); });
+        };
+      },
+      update: () => {},
     };
 
     // ------------------------------------------------------------ LUZ
@@ -335,6 +375,7 @@ export class Story {
       t.t -= dt; if (t.t <= 0) { this.timers.splice(this.timers.indexOf(t), 1); t.fn(); }
     }
     const S = this.steps[this.cur]; if (S && S.update) S.update(dt);
+    this.updateScare(dt);
     // Clara sendo puxada
     if (this.clara && this.clara.yank) {
       this.clara.yank += dt;
@@ -373,19 +414,51 @@ export class Story {
     // cai do teto num ponto do corredor longe do jogador
     const spots = [V(2, 0, 7), V(8, 0, 7), V(14, 0, 7), V(4, 0, 3), V(12, 0, 3)];
     const s = spots.filter(q => Math.hypot(q.x - p.x, q.z - p.z) > 5)[0] || spots[0];
-    G.mother.hp = 3; G.mother.toCeiling(s.x, s.z);
+    G.mother.hunt(s.x, s.z);
     G.audio.skitter(V(s.x, 2.6, s.z), 1.2, 0.9);
-    this.after(1.4, () => { if (G.mother.state === 'ceiling') { G.mother.drop(); G.audio.scream(G.mother.pos.clone(), { pitch: 1.25, dur: 1.2 }); } });
+  }
+  // o susto: ela despenca de cabeça para baixo a um palmo do seu rosto
+  faceScare(done) {
+    const G = this.G, A = G.audio, cam = G.camera;
+    const B = this.scareBody || (this.scareBody = buildHumanoid(G.cmats, { h: 1.62, thin: 0.72, armK: 1.45, fingerK: 2.0, skin: G.cmats.greySkin, dress: G.cmats.gown, dressLen: 0.72, hair: true, hairLen: 0.8, face: 'scare', barelegs: true }));
+    B.root.rotation.set(0, 0, Math.PI); cam.add(B.root);
+    B.root.traverse((o) => { if (o.isMesh) o.frustumCulled = false; });
+    B.armL.rotation.set(-0.5, 0, -1.1); B.armR.rotation.set(-0.5, 0, 1.1); B.foreL.rotation.set(-1.2, 0, 0); B.foreR.rotation.set(-1.2, 0, 0);
+    B.legL.rotation.set(0.2, 0, -0.3); B.legR.rotation.set(-0.1, 0, 0.3);
+    if (B.hair) B.hair.visible = false;
+    G.player.frozen = true;
+    A.duck(0.0, 0.05);
+    this.scare = { t: 0, B, done, hit: false };
+    A.scream(cam.position.clone(), { pitch: 1.55, dur: 1.4, vol: 1.8, rough: 1 }); A.sting(true); A.boneCrack(cam.position.clone(), 4);
+    G.shake(1.3); G.scareFx = 1;
+  }
+  updateScare(dt) {
+    const S = this.scare; if (!S) return;
+    const G = this.G, A = G.audio; S.t += dt; const t = S.t, B = S.B;
+    let off = t < 0.08 ? (1 - t / 0.08) * 1.2 : -0.06 * Math.sin((t - 0.08) * 22) * Math.exp(-(t - 0.08) * 5);
+    if (t > 1.05) off = (t - 1.05) * (t - 1.05) * 40;
+    B.root.position.set(0.015, 1.56 + off, -0.31);
+    B.neck.rotation.set(Math.sin(t * 47) * 0.12, Math.sin(t * 31) * 0.2, Math.sin(t * 59) * 0.22);
+    B.head.rotation.set(0, Math.sin(t * 23) * 0.15, Math.sin(t * 71) * 0.1);
+    B.armL.rotation.x = -0.5 + Math.sin(t * 40) * 0.15; B.armR.rotation.x = -0.5 - Math.sin(t * 37) * 0.15;
+    G.scareFx = t < 0.1 ? 1 : t > 1.0 ? 0.7 : 0.12;
+    G.scareExposure = 0.42;
+    if (!S.hit && t > 0.3) { S.hit = true; G.player.damage(14, G.camera.position.clone().add(G.camera.userData.fwd)); }
+    if (t > 1.3) {
+      G.camera.remove(B.root); this.scare = null; G.player.frozen = false; G.flickerT = 1.8; G.scareFx = 0; G.scareExposure = 0;
+      A.duck(1, 2); A.skitter(G.camera.position.clone().setY(2.7), 1.0, 1);
+      S.done && S.done();
+    }
   }
   tubScare() {
     const G = this.G, A = G.audio;
-    const t = this.tiago || (this.tiago = buildHumanoid(G.cmats, { h: 1.75, skin: G.cmats.greySkin, top: G.cmats.greySkin, mouthOpen: 2.6 }));
+    const t = this.tiago || (this.tiago = buildHumanoid(G.cmats, { h: 1.75, skin: G.cmats.greySkin, top: G.cmats.greySkin, face: 'tiago' }));
     G.scene.add(t.root);
     t.root.position.set(7.05, -0.2, 11.5); t.root.rotation.y = 0; t.root.visible = true;
     t.hips.position.y = 0.3; t.legL.rotation.x = -1.57; t.legR.rotation.x = -1.57; t.spine.rotation.x = -1.2;
     t.armL.rotation.set(-0.3, 0, -0.5); t.armR.rotation.set(-0.3, 0, 0.5); t.neck.rotation.x = 0.4;
     const bloodMat = new THREE.MeshStandardMaterial({ color: 0x3a0000, roughness: 0.15 });
-    t.root.traverse(m => { if (m.isMesh && !m.userData.bloodied) { m.material = m.material === G.cmats.hole ? m.material : bloodMat; m.userData.bloodied = true; } });
+    t.root.traverse(m => { if (m.isMesh && !m.userData.bloodied) { m.material = (m.material === G.cmats.hole || m.material.vertexColors) ? m.material : bloodMat; m.userData.bloodied = true; } });
     let k = 0;
     A.splash(V(7.05, 0.5, 11.5), true); A.sting(); G.shake(0.3);
     const step = () => {
@@ -400,7 +473,7 @@ export class Story {
   }
   mirrorScare() {
     const G = this.G, A = G.audio;
-    const f = this.mirrorFig || (this.mirrorFig = buildHumanoid(G.cmats, { h: 1.92, thin: 0.9, armK: 1.35, skin: G.cmats.paleSkin, top: G.cmats.shirt, bottom: G.cmats.pants, mouthOpen: 2.2 }));
+    const f = this.mirrorFig || (this.mirrorFig = buildHumanoid(G.cmats, { h: 1.92, thin: 0.9, armK: 1.35, skin: G.cmats.paleSkin, top: G.cmats.shirt, bottom: G.cmats.pants, face: 'father' }));
     G.scene.add(f.root);
     f.root.traverse(o => o.layers.set(2));
     const p = G.player.pos;
@@ -443,8 +516,8 @@ export class Story {
         this.flags.ammoBox = true; P.reserve += 18; A.pickup(); G.say('VOCÊ', 'Mais munição.', 1.6, 'self');
         break;
       case 'fusebox':
-        if (this.cur === 'fuse' && this.hasFuse) {
-          A.switchClick(V(13.5, 1.5, 0.2)); this.go('power'); break;
+        if (this.hasFuse && ['fuse', 'fight1'].includes(this.cur)) {
+          A.switchClick(V(13.5, 1.5, 0.2)); if (G.mother.active && G.mother.state !== 'hidden') { G.mother.onFlee = null; G.mother.flee(); } this.go('power'); break;
         }
         if (G.lightsOn) { G.say('VOCÊ', 'Funcionando.', 1.4, 'self'); break; }
         if (this.cur === 'sala' || this.cur === 'arrive') {
@@ -453,20 +526,21 @@ export class Story {
           this.after(4.5, () => this.go('phone'));
         } else G.say('VOCÊ', 'Falta o fusível.', 1.6, 'self');
         break;
-      case 'phone':
-        if (this.cur !== 'phone' || this.flags.phoneAnswered) { A.noiseBurst(A.dest(V(7.8, 1.4, 1.3)), { dur: 0.6, f: 425, q: 20, peak: 0.2 }); G.say('VOCÊ', 'Linha muda.', 1.4, 'self'); break; }
+      case 'phone': {
+        if (this.cur !== 'phone' || this.flags.phoneAnswered) { G.say('VOCÊ', 'Linha muda.', 1.4, 'self'); break; }
         this.flags.phoneAnswered = true; if (this.ring) this.ring.stop(); this.ring = null;
-        A.latch(V(7.8, 1.4, 1.3)); L.props.phone.handset.visible = false;
-        P.frozen = false;
+        const ph = L.props.phone; A.latch(ph.pos);
+        if (ph.handset) { ph.handset.position.y = 0.145; ph.handset.visible = false; }
         G.objective('');
         this.after(0.8, () => G.say('VOCÊ', 'Alô? Polícia Militar.', 2, 'self'));
-        this.after(3, () => G.say('CLARA (telefone)', 'Tia... é a polícia? Você veio buscar a gente?', 3.8, 'phone'));
-        this.after(7.2, () => G.say('VOCÊ', 'Clara? Clara, onde você tá?', 2.4, 'self'));
-        this.after(10, () => G.say('CLARA (telefone)', 'A mamãe tá brava. Ela não gosta quando tem gente na casa.', 3.8, 'phone'));
-        this.after(12.5, () => { G.mother.toCeiling(5.5, 3.6); A.skitter(V(6, 2.6, 2.5), 1.4, 0.7); });
-        this.after(14.2, () => G.say('CLARA (telefone)', 'Ela tá bem em cima de você, tia. Não olha pra cima.', 3.6, 'phone'));
-        this.after(18, () => { A.noiseBurst(A.dest(null), { dur: 0.4, f: 425, q: 30, peak: 0.25 }); this.flags.waitLook = true; this.waitT = 0; A.boneCrack(V(5.5, 2.6, 3.6), 3); });
+        this.after(3.2, () => G.say('CLARA (telefone)', 'Tia... é a polícia? Você veio buscar a gente?', 3.8, 'phone'));
+        this.after(7.4, () => G.say('VOCÊ', 'Clara? Clara, onde você tá?', 2.4, 'self'));
+        this.after(10.2, () => G.say('CLARA (telefone)', 'Escondida. A mamãe não gosta quando tem visita.', 3.6, 'phone'));
+        this.after(14.2, () => G.say('CLARA (telefone)', 'Ela tá bem em cima de você agora, tia.', 3.2, 'phone'));
+        this.after(17.6, () => G.say('CLARA (telefone)', 'Não olha.', 1.6, 'phone'));
+        this.after(19.6, () => { A.latch(ph.pos); A.noiseBurst(A.dest(null), { dur: 2.5, f: 425, q: 30, peak: 0.12 }); if (ph.handset) ph.handset.visible = true; this.go('fuse'); });
         break;
+      }
       case 'takeFuse':
         this.hasFuse = true; L.props.fuseItem.visible = false; L.props.fuseI.enabled = false; A.pickup();
         G.say('VOCÊ', 'Um fusível de 30 amperes. Tá ótimo.', 2.4, 'self');

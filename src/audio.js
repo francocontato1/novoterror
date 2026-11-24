@@ -545,6 +545,7 @@ export class Audio {
     this.loops.add(h);
     return h;
   }
+  duck(v, tau = 0.5) { if (this.ctx) this.amb.gain.setTargetAtTime(v, this.t, tau); }
   stopAllLoops() { [...this.loops].forEach(l => l.stop()); }
   suspend(on) { if (this.ctx) on ? this.ctx.suspend() : this.ctx.resume(); }
 }

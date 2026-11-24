@@ -3,6 +3,9 @@ import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import * as T from './textures.js';
 import { buildHumanoid } from './creatures.js';
+import { pbr, place } from './assets.js';
+import { makePhone, makeFridge, makePoliceCar, carDecals } from './props.js';
+import { makeFace } from './faces.js';
 
 const H = 2.7, TH = 0.15;
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -31,6 +34,7 @@ export function buildLevel(game) {
     stalkerSpots: [V(1, 0, 7), V(15, 0, 6.8), V(1, 0, 11), V(14.5, 0, 5), V(9, 0, 7), V(4.5, 0, 1)],
   };
   const group = new THREE.Group(); scene.add(group);
+  const addCol = (x0, x1, y0, y1, z0, z1, tag) => { const c = { x0, x1, y0, y1, z0, z1, on: true, tag }; L.colliders.push(c); return c; };
 
   // ---------- materiais ----------
   const M = {
@@ -71,9 +75,44 @@ export function buildLevel(game) {
   const mudT = T.mud(17);
   M.mud = std(mudT.map, { roughMap: mudT.rough, rough: 1, bump: 3 });
   L.M = M;
+  // ---------- materiais fotográficos (Poly Haven, CC0) ----------
+  const A = game.assets, env = A && A.env;
+  const P = (name, worldTile, baseTile, o = {}) => {
+    if (!A || !A.tex[name] || !A.tex[name].map) return null;
+    const m = pbr(A, name, o), k = baseTile / worldTile;
+    for (const key of ['map', 'normalMap', 'roughnessMap']) if (m[key]) { m[key] = m[key].clone(); m[key].repeat.set(k, k); m[key].needsUpdate = true; }
+    return m;
+  };
+  const ov = (key, m) => { if (m) M[key] = m; };
+  ov('wpSala', P('decrepit_wallpaper', 1.7, 1.2, { color: 0xe2d6bc }));
+  ov('wpHall', P('decrepit_wallpaper', 1.7, 1.2, { color: 0xc8b8a0 }));
+  ov('wpCasal', P('peeling_painted_wall', 2.0, 1.2, { color: 0xc4d0c4 }));
+  ov('wpKid', P('plastered_wall_03', 2.0, 1.2, { color: 0xf0c4c0 }));
+  ov('tileK', P('long_white_tiles', 1.0, 1.2, { env: 0.5, color: 0xd8d4c4 }));
+  ov('tileB', P('interior_tiles', 1.3, 1.2, { env: 0.5, color: 0xc8c0a8 }));
+  ov('floorK', P('terracotta_floor_tiles', 1.8, 1.6, { env: 0.4 }));
+  ov('floorB', P('worn_tile_floor', 1.3, 1.2, { env: 0.5 }));
+  ov('wood', P('old_wood_floor', 2.4, 2.2, { env: 0.45 }));
+  ov('porch', P('weathered_planks', 2.2, 2.0, { color: 0xa8a090 }));
+  ov('ext', P('worn_plaster_wall', 2.6, 1.2, { color: 0xd8ccb0 }));
+  ov('ceil', P('damaged_plaster', 2.5, 2, { color: 0xd8d4c8 }));
+  ov('conc', P('concrete_wall_003', 2.5, 1.5, {}));
+  M.concFloor = P('concrete_floor_worn_001', 2.5, 2.5, {}) || M.conc;
+  ov('darkWood', P('wood_cabinet_worn_long', 1.0, 1.2, { color: 0xa08068 }));
+  M.cabinet = P('wood_cabinet_worn_long', 1.0, 1.2, { color: 0xe4dccb }) || M.white;
+  M.door = P('rough_pine_door', 1, 1, { color: 0xb09a86 });
+  ov('mud', P('brown_mud_leaves_01', 3.2, 5, { rough: 0.7, env: 0.6 }));
+  M.roof = P('clay_roof_tiles', 2.0, 2.0, { color: 0x9a8a80 });
+  M.carpet = P('dirty_carpet', 1.4, 1.3, { color: 0x9a6a5a });
+  M.ceramic = new THREE.MeshPhysicalMaterial({ map: T.plaster(23), color: 0xf0eee6, roughness: 0.15, clearcoat: 0.8, clearcoatRoughness: 0.2, envMap: env, envMapIntensity: 0.6 });
+  // coloca modelo com colisor opcional
+  const model = (name, x, y, z, ry = 0, o = {}) => {
+    const m = A ? place(A, name, group, x, y, z, ry, o) : null;
+    if (m && o.col) { const b = m.userData.box; addCol(b.min.x, b.max.x, b.min.y, b.max.y, b.min.z, b.max.z); }
+    return m;
+  };
 
   // ---------- utilitários ----------
-  const addCol = (x0, x1, y0, y1, z0, z1, tag) => { const c = { x0, x1, y0, y1, z0, z1, on: true, tag }; L.colliders.push(c); return c; };
   function box(w, h, d, mat, x, y, z, o = {}) {
     const geo = new THREE.BoxGeometry(w, h, d);
     scaleBoxUV(geo, w, h, d, o.tile ?? 1.2);
@@ -158,7 +197,7 @@ export function buildLevel(game) {
   function door(axis, c, a, b, o = {}) {
     const w = b - a, pivot = new THREE.Group();
     if (axis === 'x') pivot.position.set(a, 0, c); else pivot.position.set(c, 0, a);
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(axis === 'x' ? w - 0.02 : 0.045, 2.08, axis === 'x' ? 0.045 : w - 0.02), o.mat || M.darkWood);
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(axis === 'x' ? w - 0.02 : 0.045, 2.08, axis === 'x' ? 0.045 : w - 0.02), o.mat || M.door || M.darkWood);
     if (axis === 'x') panel.position.set(w / 2, 1.04, 0); else panel.position.set(0, 1.04, w / 2);
     panel.castShadow = true; panel.receiveShadow = true; pivot.add(panel);
     // maçaneta
@@ -199,10 +238,12 @@ export function buildLevel(game) {
     const y = o.y ?? H;
     const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.4, 4), M.black); cord.position.set(x, y - 0.2, z); group.add(cord);
     const sock = cyl(0.025, 0.03, 0.06, M.black, x, y - 0.46, z, 8, { cast: false });
-    const bm = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xffc48a, emissiveIntensity: 0, roughness: 0.2 });
-    const b = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 10), bm); b.position.set(x, y - 0.5, z); group.add(b);
+    const bm = new THREE.MeshPhysicalMaterial({ color: 0x8a8070, emissive: 0xffc48a, emissiveIntensity: 0, roughness: 0.05, transmission: 0.4, transparent: true, opacity: 0.85, envMap: env });
+    const bp = [[0.012, 0], [0.014, 0.02], [0.03, 0.05], [0.034, 0.075], [0.028, 0.1], [0.0, 0.112]].map(([r, h]) => new THREE.Vector2(r, -h));
+    const b = new THREE.Mesh(new THREE.LatheGeometry(bp, 16), bm); b.position.set(x, y - 0.46, z); group.add(b);
+    const fil = new THREE.Mesh(new THREE.TorusGeometry(0.008, 0.0012, 4, 12, Math.PI), new THREE.MeshBasicMaterial({ color: 0x331a00 })); fil.position.set(x, y - 0.535, z); group.add(fil);
     const light = new THREE.PointLight(0xffc890, 0, o.dist ?? 7, 2); light.position.set(x, y - 0.55, z); group.add(light);
-    const B = { light, mat: bm, base: (o.power ?? 7) * 3.5, room, flicker: 0, dead: false, pos: V(x, y - 0.5, z) };
+    const B = { light, mat: bm, base: (o.power ?? 7) * 2.6, room, flicker: 0, dead: false, pos: V(x, y - 0.5, z) };
     L.bulbs.push(B); return B;
   }
 
@@ -236,34 +277,24 @@ export function buildLevel(game) {
     };
     branch(V(x, 0, z), V(0, 1, 0), h * 0.4, 0.18, 4);
   }
+  model('dead_tree_trunk', -1.6, 0, -7.5, 0.7); model('dead_tree_trunk_02', 15.8, 0, -13.2, 2.2); model('dead_tree_trunk', 13.5, 0, -4.2, -0.4);
   tree(-7, -6, 7, 3); tree(-9, -14, 8, 7); tree(23, -10, 9, 11); tree(24, 3, 7, 5); tree(-6, 6, 8, 13); tree(10, -22, 9, 17); tree(-1, -20, 6, 19);
 
   // viatura
-  const car = new THREE.Group(); car.position.set(7.5, 0, -12); car.rotation.y = -0.15; group.add(car);
-  box(1.75, 0.62, 4.1, M.car, 0, 0.3, 0, { parent: car });
-  box(1.55, 0.5, 2.1, M.car, 0, 0.92, -0.25, { parent: car });
-  box(1.5, 0.42, 2.0, M.carDark, 0, 0.96, -0.25, { parent: car }).scale.set(1.04, 1, 1.02);
-  box(1.77, 0.12, 4.12, M.carDark, 0, 0.55, 0, { parent: car });
-  for (const [wx, wz] of [[-0.82, 1.3], [0.82, 1.3], [-0.82, -1.3], [0.82, -1.3]]) {
-    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.31, 0.22, 16), M.tire); w.rotation.z = Math.PI / 2; w.position.set(wx, 0.31, wz); w.castShadow = true; car.add(w);
-  }
-  const barR = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.22), new THREE.MeshStandardMaterial({ color: 0x300000, emissive: 0xff0000, emissiveIntensity: 0 }));
-  barR.position.set(-0.3, 1.47, -0.1); car.add(barR);
-  const barB = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.22), new THREE.MeshStandardMaterial({ color: 0x000030, emissive: 0x0030ff, emissiveIntensity: 0 }));
-  barB.position.set(0.3, 1.47, -0.1); car.add(barB);
-  const hlMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff2d0, emissiveIntensity: 3 });
-  for (const sx of [-0.6, 0.6]) { const hl = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.12, 0.04), hlMat); hl.position.set(sx, 0.72, 2.06); car.add(hl); }
-  addCol(5.9, 9.1, 0, 1.5, -14.2, -9.8);
-  const redL = new THREE.PointLight(0xff1010, 0, 11, 2); redL.position.set(6.9, 1.7, -12); group.add(redL);
-  const blueL = new THREE.PointLight(0x1040ff, 0, 11, 2); blueL.position.set(8.1, 1.7, -12); group.add(blueL);
+  const carObj = makePoliceCar(env); const car = carObj.group; car.position.set(7.5, 0, -12); car.rotation.y = -0.15; group.add(car);
+  carDecals(car, env);
+  addCol(6.4, 8.6, 0, 1.5, -14.1, -9.9);
+  const redL = new THREE.PointLight(0xff1010, 0, 12, 2); redL.position.set(7.2, 1.75, -12.4); group.add(redL);
+  const blueL = new THREE.PointLight(0x1040ff, 0, 12, 2); blueL.position.set(7.9, 1.75, -12.4); group.add(blueL);
   const head = new THREE.SpotLight(0xfff0d8, 220, 32, 0.42, 0.5, 1.6);
-  head.position.set(7.8, 0.75, -9.8); head.target.position.set(6.2, 1.0, 2); group.add(head, head.target);
+  head.position.set(7.8, 0.7, -9.9); head.target.position.set(6.2, 1.0, 2); group.add(head, head.target);
   head.castShadow = true; head.shadow.mapSize.set(1024, 1024); head.shadow.camera.near = 0.5; head.shadow.camera.far = 30; head.shadow.bias = -0.0004;
+  const barR = { material: carObj.lensR }, barB = { material: carObj.lensB }, hlMat = carObj.hlMat;
   L.props.car = { car, redL, blueL, barR, barB, head, hlMat };
   L.updaters.push((dt, t) => {
     if (!L.props.car.sirenOn) { redL.intensity = blueL.intensity = 0; barR.material.emissiveIntensity = barB.material.emissiveIntensity = 0; return; }
     const ph = (t * 2.2) % 1, r = ph < 0.5 && (ph * 8 % 1) < 0.6 ? 1 : 0, b = ph >= 0.5 && (ph * 8 % 1) < 0.6 ? 1 : 0;
-    redL.intensity = r * 30; blueL.intensity = b * 40; barR.material.emissiveIntensity = r * 6; barB.material.emissiveIntensity = b * 6;
+    redL.intensity = r * 30; blueL.intensity = b * 40; barR.material.emissiveIntensity = r * 8; barB.material.emissiveIntensity = b * 8;
   });
   interact(V(7.5, 1, -9.6), 'Rádio da viatura', () => game.story.event('carRadio'), { range: 2.4 });
 
@@ -280,7 +311,7 @@ export function buildLevel(game) {
   // teto
   plane(16, 12, M.ceil, 8, H, 6, Math.PI / 2, 0, 2);
   // telhado
-  const roofMat = std(T.concrete(61), { color: 0x5a3020, rough: 0.9 });
+  const roofMat = M.roof || std(T.concrete(61), { color: 0x5a3020, rough: 0.9 });
   const ang = Math.atan2(1.6, 6.8);
   const r1 = box(17.2, 0.1, 7.1, roofMat, 8, 0, 0, { tile: 2 }); r1.position.set(8, H + 0.85, 2.8); r1.rotation.x = ang;
   const r2 = box(17.2, 0.1, 7.1, roofMat, 8, 0, 0, { tile: 2 }); r2.position.set(8, H + 0.85, 9.2); r2.rotation.x = -ang;
@@ -319,44 +350,54 @@ export function buildLevel(game) {
   plane(10, 2.6, M.porch, 8, 0.01, -1.3, -Math.PI / 2, 0, 2);
   box(10.4, 0.12, 2.9, M.darkWood, 8, 2.55, -1.35, { tile: 2 });
   for (const px of [3.1, 6.9, 9.1, 12.9]) box(0.12, 2.55, 0.12, M.paintWood, px, 0, -2.5, { col: true, tile: 0.6 });
-  box(0.6, 0.45, 0.6, M.darkWood, 11.5, 0, -1, { col: true, tile: 0.6 }); // cadeira velha
-  box(0.6, 0.55, 0.06, M.darkWood, 11.5, 0.45, -1.28, { tile: 0.6 });
+  if (!model('plastic_monobloc_chair_01', 11.5, 0, -1.1, 2.6, { col: true, dirty: 0.75 })) box(0.6, 0.45, 0.6, M.darkWood, 11.5, 0, -1, { col: true, tile: 0.6 });
+  model('rubber_boots', 4.6, 0, -0.35, 0.4); model('rubber_boots', 4.85, 0, -0.3, -0.2);
+  model('trashbag', 13.6, 0, -0.6, 1.0, { dirty: 0.7 });
   const porchBulb = bulb(6, -1.2, 'porch', { y: 2.55, power: 0 });
   porchBulb.dead = true;
 
   // ---------- SALA ----------
-  const sofa = [box(0.9, 0.42, 2.1, M.fabric, 0.55, 0, 2.2, { col: true }), box(0.22, 0.5, 2.1, M.fabric, 0.18, 0.42, 2.2), box(0.9, 0.22, 0.2, M.fabric, 0.55, 0.42, 1.2), box(0.9, 0.22, 0.2, M.fabric, 0.55, 0.42, 3.2)];
-  box(0.5, 0.5, 1.1, M.darkWood, 3.3, 0, 2.2, { col: true });
-  box(0.5, 0.46, 0.58, M.plastic, 3.32, 0.5, 2.2);
+  if (!model('Sofa_01', 0.42, 0, 2.2, Math.PI / 2, { col: true, dirty: 0.8 })) box(0.9, 0.42, 2.1, M.fabric, 0.55, 0, 2.2, { col: true });
+  box(0.45, 0.5, 1.0, M.darkWood, 3.35, 0, 2.2, { col: true, tile: 0.8 });
+  const tvM = model('Television_01', 3.35, 0.5, 2.2, -Math.PI / 2);
+  const tvFront = tvM ? tvM.userData.box.min.x - 0.004 : 3.065;
+  const tvCy = tvM ? (tvM.userData.box.min.y + tvM.userData.box.max.y) / 2 + 0.01 : 0.73;
+  if (!tvM) box(0.5, 0.46, 0.58, M.plastic, 3.32, 0.5, 2.2);
+  model('mantel_clock_01', 3.4, 0.5, 2.62, -Math.PI / 2);
   const tvTex = T.tvStatic();
-  const tvScreen = plane(0.44, 0.34, new THREE.MeshStandardMaterial({ map: tvTex, emissive: 0xffffff, emissiveMap: tvTex, emissiveIntensity: 1.2 }), 3.065, 0.73, 2.2, 0, -Math.PI / 2, 0);
-  const tvLight = new THREE.PointLight(0xa8c0ff, 1.2, 4, 2); tvLight.position.set(2.8, 0.75, 2.2); group.add(tvLight);
+  const tvScreen = plane(0.36, 0.27, new THREE.MeshStandardMaterial({ map: tvTex, emissive: 0xffffff, emissiveMap: tvTex, emissiveIntensity: 1.1, roughness: 0.1 }), tvFront, tvCy, 2.2, 0, -Math.PI / 2, 0);
+  const tvLight = new THREE.PointLight(0xa8c0ff, 1.2, 4, 2); tvLight.position.set(tvFront - 0.3, tvCy, 2.2); group.add(tvLight);
   L.props.tv = { tvTex, tvScreen, tvLight, on: true };
   L.updaters.push((dt, t) => { if (L.props.tv.on) { if (Math.random() < 0.5) tvTex.userData.update(t); tvLight.intensity = 0.7 + Math.random() * 0.6; } else tvLight.intensity = 0; });
+  // telefone de disco sobre o criado-mudo ao lado do sofá
+  const stand = model('ClassicNightstand_01', 0.33, 0, 3.75, Math.PI / 2, { col: true });
+  const standTop = stand ? stand.userData.box.max.y : 0.6;
+  if (!stand) box(0.45, 0.6, 0.45, M.darkWood, 0.33, 0, 3.75, { col: true });
+  const phone = makePhone(env); phone.position.set(0.36, standTop, 3.72); phone.rotation.y = Math.PI / 2 + 0.25; group.add(phone);
+  L.props.phone = { pos: V(0.4, standTop + 0.1, 3.72), handset: phone.userData.handset, obj: phone, base: phone.position.clone() };
+  const phI = interact(V(0.4, standTop + 0.1, 3.72), 'Telefone', () => game.story.event('phone'), { range: 2.3 });
+  Object.defineProperty(phI, 'label', { get: () => (game.story && game.story.ring ? 'Atender o telefone' : 'Telefone') });
   // mesa de jantar posta
-  box(1.7, 0.05, 0.95, M.darkWood, 5.5, 0.73, 4.2, { tile: 0.8 });
-  for (const [lx, lz] of [[-0.78, -0.4], [0.78, -0.4], [-0.78, 0.4], [0.78, 0.4]]) box(0.06, 0.73, 0.06, M.darkWood, 5.5 + lx, 0, 4.2 + lz);
-  addCol(4.65, 6.35, 0, 0.78, 3.72, 4.68);
-  const chairs = [[5.1, 3.45, 0], [5.9, 3.45, 0], [5.1, 4.95, Math.PI], [5.9, 4.95, Math.PI]];
-  for (const [cx, cz, r] of chairs) {
-    box(0.42, 0.04, 0.42, M.darkWood, cx, 0.45, cz, { tile: 0.6 });
-    for (const [lx, lz] of [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]]) box(0.04, 0.45, 0.04, M.darkWood, cx + lx, 0, cz + lz);
-    box(0.42, 0.5, 0.04, M.darkWood, cx, 0.49, cz + (r ? 0.19 : -0.19), { tile: 0.6 });
-  }
-  // cadeira caída
-  const fallen = box(0.42, 0.04, 0.42, M.darkWood, 6.7, 0.0, 4.6, { tile: 0.6 }); fallen.rotation.z = 1.4; fallen.position.y = 0.21;
-  const plateMat = new THREE.MeshStandardMaterial({ color: 0xe8e4da, roughness: 0.3 });
-  const plates = [[5.1, 3.95], [5.9, 3.95], [5.1, 4.45], [5.9, 4.45]];
+  const tbl = model('dining_table', 5.6, 0, 4.2, 0, { col: true, dirty: 0.85 });
+  const TT = tbl ? tbl.userData.box.max.y : 0.78;
+  if (!tbl) { box(1.7, 0.05, 0.95, M.darkWood, 5.5, 0.73, 4.2, { tile: 0.8 }); addCol(4.65, 6.35, 0, 0.78, 3.72, 4.68); }
+  for (const [cx, cz, r] of [[5.0, 3.25, 0], [6.2, 3.25, 0], [5.0, 5.15, Math.PI], [6.2, 5.15, Math.PI]]) model('dining_chair_02', cx, 0, cz, r, { dirty: 0.8 });
+  // cadeira derrubada
+  const fc = model('dining_chair_02', 7.1, 0, 4.4, 1.1, { dirty: 0.8 });
+  if (fc) { fc.rotation.z = Math.PI / 2; fc.position.y = 0.22; fc.position.x = 7.25; }
+  const plateMat = new THREE.MeshPhysicalMaterial({ color: 0xe8e4da, roughness: 0.25, clearcoat: 0.8, envMap: env });
+  const plates = [[5.0, 3.85], [6.2, 3.85], [5.0, 4.55], [6.2, 4.55]];
   for (const [px, pz] of plates) {
-    cyl(0.13, 0.1, 0.02, plateMat, px, 0.755, pz, 20);
-    const f = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), M.food); f.scale.set(1, 0.35, 0.8); f.position.set(px + 0.02, 0.78, pz); group.add(f);
+    cyl(0.13, 0.1, 0.02, plateMat, px, TT, pz, 24);
+    const f = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), M.food); f.scale.set(1, 0.32, 0.8); f.position.set(px + 0.02, TT + 0.03, pz); group.add(f);
+    const fk = box(0.02, 0.004, 0.18, M.metal, px + 0.17, TT, pz); fk.rotation.y = 0.1;
   }
   // dentes no prato
-  for (let i = 0; i < 9; i++) { const t = new THREE.Mesh(new THREE.BoxGeometry(0.009, 0.014, 0.008), M.bone); t.position.set(5.9 + (Math.random() - 0.5) * 0.12, 0.775, 4.45 + (Math.random() - 0.5) * 0.12); t.rotation.set(Math.random() * 3, Math.random() * 3, 0); group.add(t); }
-  floorDecal(T.bloodSplat(3, 'splat'), 0.25, 5.9, 4.45, 0.769);
-  interact(V(5.9, 0.9, 4.45), 'Examinar prato', () => game.story.event('teeth'));
+  for (let i = 0; i < 11; i++) { const t = new THREE.Mesh(new THREE.CapsuleGeometry(0.004, 0.01, 2, 5), M.bone); t.position.set(6.2 + (Math.random() - 0.5) * 0.12, TT + 0.026, 4.55 + (Math.random() - 0.5) * 0.12); t.rotation.set(Math.random() * 3, Math.random() * 3, 0); group.add(t); }
+  floorDecal(T.bloodSplat(3, 'splat'), 0.25, 6.2, 4.55, TT + 0.022);
+  interact(V(6.2, TT + 0.1, 4.55), 'Examinar prato', () => game.story.event('teeth'));
   // tapete
-  plane(2.6, 1.8, std(T.cloth(44, [110, 40, 35], 0.3), { bump: false }), 5.5, 0.004, 4.2, -Math.PI / 2, 0, 1.3);
+  plane(3.0, 2.0, M.carpet || std(T.cloth(44, [110, 40, 35], 0.3), { bump: false }), 5.6, 0.004, 4.2, -Math.PI / 2, 0, 1.3);
   // rastro de sangue até o corredor
   for (let i = 0; i < 7; i++) floorDecal(T.bloodSplat(10 + i, 'smear'), 0.9, 5.1 - i * 0.18, 4.9 + i * 0.17, 0.007 + i * 0.0005, -0.8 + (Math.random() - 0.5) * 0.4);
   // retrato da avó (olhos queimados)
@@ -371,56 +412,50 @@ export function buildLevel(game) {
   // escrita revelada pelo flash
   const rv1 = decal(T.bloodText('ELA NOS EMPRESTOU'), 2.6, 0.65, 7.91, 1.6, 4.7, 0, -Math.PI / 2, { rough: 0.6 });
   L.reveal.push(rv1);
-  // telefone de parede
-  box(0.08, 0.22, 0.16, M.plastic, 7.88, 1.3, 1.3);
-  const handset = box(0.06, 0.05, 0.22, M.plastic, 7.84, 1.48, 1.3);
-  L.props.phone = { pos: V(7.8, 1.4, 1.3), handset };
-  interact(V(7.8, 1.4, 1.3), 'Telefone', () => game.story.event('phone'));
   // interruptor
   box(0.08, 0.12, 0.02, M.white, 4.8, 1.2, 0.09);
   interact(V(4.8, 1.25, 0.1), 'Interruptor', () => game.story.event('switch'));
   bulb(4, 3, 'sala');
 
   // ---------- COZINHA ----------
-  box(0.62, 0.88, 4.6, M.white, 15.6, 0, 2.6, { col: true });
+  box(0.62, 0.88, 4.6, M.cabinet, 15.6, 0, 2.6, { col: true, tile: 1.0 });
+  for (let i = 0; i < 6; i++) box(0.02, 0.6, 0.7, M.cabinet, 15.28, 0.12, 0.65 + i * 0.75, { tile: 0.8 });
   box(0.66, 0.04, 4.62, std(T.concrete(71), { color: 0x6a6a62, rough: 0.4 }), 15.58, 0.88, 2.6);
   box(0.45, 0.04, 0.6, M.metal, 15.6, 0.89, 3.1); // pia
-  box(0.36, 0.7, 4.6, M.white, 15.75, 1.55, 2.6, { tile: 0.8 });
-  box(0.62, 0.88, 0.62, M.white, 15.6, 0, 5.4, { col: true });
+  box(0.36, 0.7, 4.6, M.cabinet, 15.75, 1.55, 2.6, { tile: 0.8 });
+  box(0.62, 0.88, 0.62, M.ceramic, 15.6, 0, 5.4, { col: true });
+  model('pot_enamel_01', 15.5, 0.9, 5.3, 0.6);
   for (const [bx, bz] of [[15.45, 5.25], [15.75, 5.25], [15.45, 5.55], [15.75, 5.55]]) cyl(0.08, 0.08, 0.02, M.black, bx, 0.88, bz, 12);
-  // geladeira
-  box(0.72, 0.6, 0.68, M.white, 8.7, 0, 0.5, { tile: 0.8 });
-  box(0.72, 1.12, 0.04, M.white, 8.7, 0.6, 0.18, { tile: 0.8 });
-  box(0.04, 1.12, 0.68, M.white, 8.36, 0.6, 0.5, { tile: 0.8 });
-  box(0.04, 1.12, 0.68, M.white, 9.04, 0.6, 0.5, { tile: 0.8 });
-  box(0.72, 0.04, 0.68, M.white, 8.7, 1.68, 0.5, { tile: 0.8 });
-  box(0.64, 0.015, 0.6, M.metal, 8.7, 1.15, 0.5);
-  addCol(8.34, 9.06, 0, 1.72, 0.16, 0.84);
-  const fPivot = new THREE.Group(); fPivot.position.set(8.34, 0, 0.86); group.add(fPivot);
-  const fDoor = box(0.72, 1.1, 0.06, M.white, 0.36, 0.6, 0, { parent: fPivot, tile: 0.8 });
-  const fLight = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 1.0), new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xdde8ff, emissiveIntensity: 0 }));
-  fLight.position.set(8.7, 1.15, 0.2); group.add(fLight);
-  // mão decepada na geladeira
-  const handG = new THREE.Group(); handG.position.set(8.7, 1.25, 0.5); handG.rotation.set(0.2, 0.5, 1.5); group.add(handG);
-  const sk = new THREE.MeshStandardMaterial({ map: T.skin(55, [170, 150, 135]), roughness: 0.5 });
-  const palm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.03), sk); handG.add(palm);
-  for (let i = 0; i < 4; i++) { const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.009, 0.07, 3, 6), sk); f.position.set((i - 1.5) * 0.019, 0.09, 0); f.rotation.x = 0.4 + i * 0.1; handG.add(f); }
-  const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.028, 0.04, 10), new THREE.MeshStandardMaterial({ color: 0x5a0000, roughness: 0.3 })); wrist.position.y = -0.07; handG.add(wrist);
-  floorDecal(T.bloodSplat(21, 'pool'), 0.4, 8.7, 0.5, 1.13);
-  for (let i = 0; i < 4; i++) { const j = cyl(0.05, 0.05, 0.14, new THREE.MeshStandardMaterial({ color: 0x5a3010, roughness: 0.2, transparent: true, opacity: 0.8 }), 8.5 + i * 0.12, 0.75, 0.4, 10); }
-  L.props.fridge = { pivot: fPivot, light: fLight, open: 0, target: 0 };
-  interact(V(8.9, 1.1, 1.0), 'Abrir geladeira', () => game.story.event('fridge'));
+  // geladeira antiga — e o que ficou dentro dela
+  const fr = makeFridge(env); fr.group.position.set(8.72, 0, 0.53); group.add(fr.group);
+  addCol(8.34, 9.1, 0, 1.65, 0.18, 0.88);
+  const tiagoHead = A ? makeFace(A, 'tiago') : null;
+  if (tiagoHead) {
+    tiagoHead.scale.setScalar(0.041); tiagoHead.position.set(0, 0.98, 0.02); tiagoHead.rotation.set(-0.12, 0.25, 0.08); fr.group.add(tiagoHead);
+    const stump = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.015, 16), new THREE.MeshPhysicalMaterial({ color: 0x5a0808, roughness: 0.25, clearcoat: 1 })); stump.position.set(0, 0.8, 0.03); fr.group.add(stump);
+    const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.13, 0.03, 24), new THREE.MeshPhysicalMaterial({ color: 0xd8d4c8, roughness: 0.2, clearcoat: 1, envMap: env })); dish.position.set(0, 0.795, 0.02); fr.group.add(dish);
+    const pool = new THREE.Mesh(new THREE.CircleGeometry(0.14, 20), M.bloodPool); pool.rotation.x = -Math.PI / 2; pool.position.set(0, 0.812, 0.02); fr.group.add(pool);
+  }
+  for (let i = 0; i < 4; i++) { const j = cyl(0.045, 0.045, 0.14, new THREE.MeshPhysicalMaterial({ color: [0x5a3010, 0x6a1010, 0x3a3a10, 0x5a2a20][i], roughness: 0.1, transmission: 0.3, transparent: true, opacity: 0.85, envMap: env }), -0.22 + i * 0.14, 1.11, -0.1, 12, { parent: fr.group }); }
+  floorDecal(T.bloodSplat(21, 'drip'), 0.5, 0, 0, 0.43, 0, { parent: fr.group });
+  L.props.fridge = { pivot: fr.pivot, light: fr.bulb, open: 0, target: 0 };
+  interact(V(8.95, 1.1, 1.0), 'Abrir geladeira', () => game.story.event('fridge'));
   floorDecal(T.bloodSplat(22, 'pool'), 1.4, 9.3, 1.4, 0.006);
   // mesa da cozinha
   box(1.1, 0.05, 0.8, M.darkWood, 11.5, 0.75, 3, { tile: 0.8 });
+  model('wooden_bowl_01', 11.75, 0.8, 2.85, 0);
+  for (const [cx, cz, r] of [[11.2, 2.35, 0], [11.9, 3.7, Math.PI]]) model('dining_chair_02', cx, 0, cz, r, { dirty: 0.75 });
+  if (!model('painted_wooden_cabinet', 9.4, 0, 5.62, Math.PI, { col: true, dirty: 0.85 })) {}
+  model('trashbag', 14.75, 0, 5.62, 0.4, { dirty: 0.7 });
   for (const [lx, lz] of [[-0.5, -0.35], [0.5, -0.35], [-0.5, 0.35], [0.5, 0.35]]) box(0.05, 0.75, 0.05, M.darkWood, 11.5 + lx, 0, 3 + lz);
   addCol(10.95, 12.05, 0, 0.8, 2.6, 3.4);
   const knife = box(0.3, 0.005, 0.03, M.metal, 11.3, 0.8, 3.1); knife.rotation.y = 0.4;
   floorDecal(T.bloodSplat(23, 'splat'), 0.5, 11.6, 3.0, 0.776);
   // quadro de luz
-  box(0.4, 0.5, 0.1, M.rust, 13.5, 1.3, 0.13);
+  const pbx = model('power_box_01', 13.5, 1.15, 0.12, 0);
+  if (!pbx) box(0.4, 0.5, 0.1, M.rust, 13.5, 1.3, 0.13);
   const fuseLed = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 6), new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff2000, emissiveIntensity: 0 }));
-  fuseLed.position.set(13.65, 1.72, 0.19); group.add(fuseLed);
+  fuseLed.position.set(13.72, pbx ? pbx.userData.box.max.y - 0.04 : 1.72, pbx ? pbx.userData.box.max.z + 0.005 : 0.19); group.add(fuseLed);
   L.props.fuse = { led: fuseLed };
   interact(V(13.5, 1.55, 0.25), 'Quadro de luz', () => game.story.event('fusebox'));
   // gaveta com munição
@@ -430,7 +465,7 @@ export function buildLevel(game) {
   for (let i = 0; i < 9; i++) floorDecal(T.bloodSplat(60 + (i % 2), 'hand'), 0.22, 9.6 + i * 0.55, 2.0 + Math.sin(i) * 0.3 + (i % 2) * 0.25, 0.007, Math.PI + (i % 2 ? 0.3 : -0.3), { opacity: 0.8 });
 
   // ---------- CORREDOR ----------
-  plane(14, 0.9, std(T.cloth(45, [90, 30, 30], 0.2), { bump: false }), 8, 0.004, 7, -Math.PI / 2, 0, 1.2);
+  plane(14, 0.9, M.carpet || std(T.cloth(45, [90, 30, 30], 0.2), { bump: false }), 8, 0.004, 7, -Math.PI / 2, 0, 1.2);
   const photoSpots = [4.8, 5.8, 9.6, 10.6, 14.2];
   photoSpots.forEach((px, i) => {
     plane(0.32, 0.26, new THREE.MeshStandardMaterial({ map: T.familyPhoto(5 + i, 3 + (i % 2), true, i % 2 === 0), roughness: 0.4 }), px, 1.55 + (i % 2) * 0.12, 7.91, 0, Math.PI, 0);
@@ -450,36 +485,39 @@ export function buildLevel(game) {
   L.reveal.push(ghost.root); L.props.ghost = ghost.root;
 
   // ---------- QUARTO DO CASAL ----------
-  box(1.7, 0.42, 2.1, M.darkWood, 3, 0, 10.9, { col: true });
-  box(1.6, 0.2, 2.0, M.sheet, 3, 0.42, 10.9);
-  box(1.62, 0.06, 1.5, M.blanket, 3, 0.62, 10.6);
-  box(1.7, 0.9, 0.08, M.darkWood, 3, 0.4, 11.95, { tile: 0.8 });
-  for (const px of [2.6, 3.4]) { const p = box(0.55, 0.12, 0.35, M.sheet, px, 0.62, 11.65); p.rotation.x = -0.2; }
-  floorDecal(T.bloodSplat(31, 'pool'), 1.1, 3.3, 10.6, 0.685, 0.5);
-  box(0.45, 0.55, 0.4, M.darkWood, 1.75, 0, 11.7, { col: true });
-  box(0.45, 0.55, 0.4, M.darkWood, 4.25, 0, 11.7, { col: true });
-  box(0.6, 2.0, 1.5, M.darkWood, 0.38, 0, 9.0, { col: true });
+  const bed = model('old_bed_frame', 3, 0, 10.9, Math.PI, { col: true });
+  if (bed) { bed.scale.x = 1.7; bed.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(bed); L.colliders[L.colliders.length - 1].x0 = bb.min.x; L.colliders[L.colliders.length - 1].x1 = bb.max.x; }
+  else box(1.7, 0.42, 2.1, M.darkWood, 3, 0, 10.9, { col: true });
+  box(1.45, 0.18, 1.9, M.sheet, 3, 0.36, 10.85);
+  const blanket = box(1.5, 0.05, 1.35, M.blanket, 3, 0.54, 10.6); blanket.rotation.z = 0.02;
+  for (const px of [2.6, 3.4]) { const p = box(0.55, 0.12, 0.35, M.sheet, px, 0.54, 11.6); p.rotation.x = -0.25; }
+  floorDecal(T.bloodSplat(31, 'pool'), 1.1, 3.3, 10.6, 0.592, 0.5);
+  const ns1 = model('ClassicNightstand_01', 1.6, 0, 11.7, Math.PI, { col: true });
+  const ns2 = model('ClassicNightstand_01', 4.4, 0, 11.7, Math.PI, { col: true });
+  const nsTop = ns2 ? ns2.userData.box.max.y : 0.55;
+  if (!ns1) { box(0.45, 0.55, 0.4, M.darkWood, 1.75, 0, 11.7, { col: true }); box(0.45, 0.55, 0.4, M.darkWood, 4.25, 0, 11.7, { col: true }); }
+  if (!model('vintage_cabinet_01', 0.36, 0, 9.15, Math.PI / 2, { col: true, dirty: 0.8 })) box(0.6, 2.0, 1.5, M.darkWood, 0.38, 0, 9.0, { col: true });
   // fusível no criado-mudo
   const fuseItem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.07, 8), new THREE.MeshStandardMaterial({ color: 0xd8c890, roughness: 0.3, metalness: 0.4 }));
-  fuseItem.rotation.z = Math.PI / 2; fuseItem.position.set(4.25, 0.57, 11.65); group.add(fuseItem);
+  fuseItem.rotation.z = Math.PI / 2; fuseItem.position.set(4.35, nsTop + 0.016, 11.65); group.add(fuseItem);
   L.props.fuseItem = fuseItem;
-  L.props.fuseI = interact(V(4.25, 0.6, 11.65), 'Pegar fusível', () => game.story.event('takeFuse'), { enabled: false });
+  L.props.fuseI = interact(V(4.35, nsTop + 0.05, 11.65), 'Pegar fusível', () => game.story.event('takeFuse'), { enabled: false });
   bulb(3, 10, 'casal');
   // escrita no teto
   decal(T.bloodText('NÃO OLHE PRA CIMA'), 2.2, 0.55, 3, H - 0.01, 9.4, Math.PI / 2, 0, { rz: Math.PI });
 
   // ---------- BANHEIRO ----------
   const tubX = 7.05, tubZ = 11.5;
-  box(1.7, 0.55, 0.08, M.white, tubX, 0, 11.08, { col: true });
-  box(0.08, 0.55, 0.8, M.white, 6.2, 0, tubZ); box(0.08, 0.55, 0.8, M.white, 7.9, 0, tubZ, { col: true });
-  box(1.7, 0.06, 0.8, M.white, tubX, 0, tubZ);
+  box(1.7, 0.55, 0.08, M.ceramic, tubX, 0, 11.08, { col: true });
+  box(0.08, 0.55, 0.8, M.ceramic, 6.2, 0, tubZ); box(0.08, 0.55, 0.8, M.ceramic, 7.9, 0, tubZ, { col: true });
+  box(1.7, 0.06, 0.8, M.ceramic, tubX, 0, tubZ);
   addCol(6.15, 7.95, 0, 0.6, 11.05, 11.95);
   const bloodSurf = plane(1.6, 0.74, M.bloodPool, tubX, 0.47, tubZ, -Math.PI / 2, 0, 0);
   L.props.tub = { surf: bloodSurf, pos: V(tubX, 0.5, tubZ) };
   decal(T.bloodSplat(41, 'drip'), 0.6, 0.6, 7.4, 0.3, 11.035, 0, Math.PI);
   // vaso e pia
-  box(0.38, 0.4, 0.5, M.white, 9.6, 0, 9.0, { col: true }); box(0.4, 0.35, 0.18, M.white, 9.75, 0.4, 9.0);
-  box(0.45, 0.12, 0.38, M.white, 9.7, 0.78, 10.7, { col: true }); cyl(0.05, 0.07, 0.78, M.white, 9.75, 0, 10.7, 10);
+  box(0.38, 0.4, 0.5, M.ceramic, 9.6, 0, 9.0, { col: true }); box(0.4, 0.35, 0.18, M.ceramic, 9.75, 0.4, 9.0);
+  box(0.45, 0.12, 0.38, M.ceramic, 9.7, 0.78, 10.7, { col: true }); cyl(0.05, 0.07, 0.78, M.ceramic, 9.75, 0, 10.7, 10);
   // espelho (renderização real de reflexo)
   const mirror = new Reflector(new THREE.PlaneGeometry(0.55, 0.75), { textureWidth: 512, textureHeight: 680, color: 0x9a9a9a, clipBias: 0.003 });
   mirror.position.set(9.9, 1.55, 10.7); mirror.rotation.y = -Math.PI / 2; group.add(mirror);
@@ -493,9 +531,8 @@ export function buildLevel(game) {
   L.props.underDoor = underDoor;
 
   // ---------- QUARTO DA CRIANÇA ----------
-  box(0.95, 0.38, 1.9, std(T.woodFloor(12), { color: 0xb08a70 }), 15.42, 0, 10.85, { col: true });
-  box(0.9, 0.12, 1.85, std(T.cloth(46, [200, 170, 190], 0.1)), 15.42, 0.38, 10.85);
-  box(0.95, 0.7, 0.06, std(T.woodFloor(12), { color: 0xb08a70 }), 15.42, 0, 11.82);
+  if (!model('old_bed_frame', 15.42, 0, 10.85, Math.PI, { col: true, tint: 0xf0d8d8 })) box(0.95, 0.38, 1.9, std(T.woodFloor(12), { color: 0xb08a70 }), 15.42, 0, 10.85, { col: true });
+  box(0.84, 0.14, 1.85, std(T.cloth(46, [200, 170, 190], 0.1)), 15.42, 0.34, 10.85);
   // brinquedos
   const toyCols = [0xb03030, 0x3050b0, 0xd0a020, 0x30a050];
   for (let i = 0; i < 6; i++) { const t = box(0.08, 0.08, 0.08, new THREE.MeshStandardMaterial({ color: toyCols[i % 4], roughness: 0.6 }), 11.5 + Math.random() * 1.5, 0, 9 + Math.random() * 2); t.rotation.y = Math.random() * 3; }
@@ -537,7 +574,7 @@ export function buildLevel(game) {
   // corrimão
   const rail = box(4.6, 0.05, 0.05, M.darkWood, 18, 0, 6.2); rail.position.y = -0.6; rail.rotation.z = -Math.atan2(3, 4);
   // porão
-  plane(8, 12, M.conc, 24, BY + 0.005, 6, -Math.PI / 2, 0, 2.5);
+  plane(8, 12, M.concFloor, 24, BY + 0.005, 6, -Math.PI / 2, 0, 2.5);
   plane(8, 12, M.conc, 24, -0.6, 6, Math.PI / 2, 0, 2.5);
   for (let z = 0.5; z < 12; z += 1.4) box(8, 0.18, 0.12, M.darkWood, 24, -0.78, z, { tile: 1 });
   wall('z', 20, 0, 6, [], M.conc, M.conc, BY, 2.4, { tile: 1.5 });
@@ -546,12 +583,14 @@ export function buildLevel(game) {
   wall('x', 0, 20, 28, [], M.conc, M.conc, BY, 2.4, { tile: 1.5 });
   wall('x', 12, 20, 28, [], M.conc, M.conc, BY, 2.4, { tile: 1.5 });
   for (const [px, pz] of [[23, 3.6], [23.2, 9], [25.8, 6.4]]) box(0.35, 2.4, 0.35, M.conc, px, BY, pz, { col: true, tile: 1 });
-  // estantes com potes
-  for (let s = 0; s < 3; s++) {
-    box(2.4, 0.04, 0.45, M.darkWood, 23.8, BY + 0.4 + s * 0.6, 0.35, { tile: 0.8 });
-    for (let j = 0; j < 7; j++) cyl(0.05, 0.05, 0.18, new THREE.MeshStandardMaterial({ color: [0x4a2a10, 0x3a3010, 0x501010][j % 3], roughness: 0.15, transparent: true, opacity: 0.85 }), 22.8 + j * 0.32, BY + 0.44 + s * 0.6, 0.35, 10);
-  }
-  addCol(22.6, 25, BY, BY + 2, 0.1, 0.6);
+  // estantes, caixotes, barris
+  const sh1 = model('wooden_bookshelf_worn', 22.6, BY, 0.38, 0, { col: true, dirty: 0.75 });
+  const sh2 = model('wooden_bookshelf_worn', 24.1, BY, 0.38, 0, { col: true, dirty: 0.75 });
+  if (!sh1) { for (let s2 = 0; s2 < 3; s2++) box(2.4, 0.04, 0.45, M.darkWood, 23.8, BY + 0.4 + s2 * 0.6, 0.35, { tile: 0.8 }); addCol(22.6, 25, BY, BY + 2, 0.1, 0.6); }
+  for (let j = 0; j < 10; j++) cyl(0.045, 0.045, 0.16, new THREE.MeshPhysicalMaterial({ color: [0x4a2a10, 0x3a3010, 0x501010][j % 3], roughness: 0.1, transmission: 0.3, transparent: true, opacity: 0.85, envMap: env }), 22.1 + (j % 5) * 0.22 + Math.floor(j / 5) * 1.5, BY + 0.43 + (j % 2) * 0.68, 0.38, 10);
+  model('ammo_box', 24.7, BY + 1.12, 0.4, 0.2);
+  model('wooden_crate_01', 21.1, BY, 3.6, 0.3, { col: true }); model('wooden_crate_01', 21.1, BY + 0.35, 3.6, 0.5); model('wooden_crate_01', 26.8, BY, 9.8, 1.4, { col: true });
+  model('Barrel_01', 27.2, BY, 11.3, 0, { col: true, dirty: 0.8 }); model('Barrel_01', 26.5, BY, 11.45, 1, { col: true, dirty: 0.8 }); model('trashbag', 21.4, BY, 0.8, 2, { dirty: 0.6 });
   L.props.ammoBox = interact(V(24.8, BY + 1.1, 0.5), 'Caixa de munição', () => game.story.event('ammoBox'));
   // corpos embrulhados pendurados de cabeça para baixo
   const wrapped = [];

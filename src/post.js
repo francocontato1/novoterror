@@ -85,7 +85,7 @@ export function createPost(renderer, scene, camera) {
   composer.addPass(new RenderPass(scene, camera));
   const after = new AfterimagePass(0.38);
   composer.addPass(after);
-  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.55, 0.6, 0.82);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.4, 0.55, 0.85);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   const cam = new ShaderPass(BodycamShader);
