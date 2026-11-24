@@ -1,7 +1,6 @@
 // Carregamento de texturas fotográficas (Poly Haven / CC0), modelos glTF e céu HDR.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
 const BASE = './assets/';
 export const TEXTURES = [
@@ -32,21 +31,23 @@ export async function loadAssets(renderer, onProgress) {
   }
   for (const n of MODELS) {
     total++;
-    jobs.push(new Promise((res) => gl.load(`${BASE}models/${n}/${n}.gltf`, (g) => {
+    jobs.push(new Promise((res) => gl.load(`${BASE}models/${n}/${n}.json`, (g) => {
       g.scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (o.material.map) o.material.map.anisotropy = aniso; } });
       A.models[n] = g.scene; tick(); res();
     }, undefined, (e) => { console.warn('modelo', n, e); tick(); res(); })));
   }
   total++;
-  jobs.push(new Promise((res) => gl.load(`${BASE}human/LeePerrySmith.glb`, (g) => { A.head = g.scene.children[0]; tick(); res(); }, undefined, () => { tick(); res(); })));
+  jobs.push(new Promise((res) => gl.load(`${BASE}human/LeePerrySmith.json`, (g) => { g.scene.traverse((o) => { if (o.isMesh && !A.head) A.head = o; }); tick(); res(); }, undefined, () => { tick(); res(); })));
   jobs.push(loadTex(`${BASE}human/head_col.jpg`, true).then((t) => (A.headMaps.map = t)));
   jobs.push(loadTex(`${BASE}human/head_nor.jpg`, false).then((t) => (A.headMaps.normalMap = t)));
   jobs.push(loadTex(`${BASE}human/head_spec.jpg`, false).then((t) => (A.headMaps.spec = t)));
   total++;
-  jobs.push(new Promise((res) => new RGBELoader(manager).load(`${BASE}hdr/night.hdr`, (t) => {
+  // céu noturno equiretangular (Poly Haven, convertido para JPG) -> mapa de ambiente pré-filtrado
+  jobs.push(loadTex(`${BASE}hdr/night.jpg`, true).then((t) => {
+    if (!t) return;
     t.mapping = THREE.EquirectangularReflectionMapping;
-    const pm = new THREE.PMREMGenerator(renderer); A.env = pm.fromEquirectangular(t).texture; t.dispose(); pm.dispose(); tick(); res();
-  }, undefined, () => { tick(); res(); })));
+    const pm = new THREE.PMREMGenerator(renderer); A.env = pm.fromEquirectangular(t).texture; t.dispose(); pm.dispose();
+  }));
   await Promise.all(jobs);
   return A;
 }
