@@ -99,10 +99,12 @@ export function buildLevel(game) {
   ov('conc', P('concrete_wall_003', 2.5, 1.5, {}));
   M.concFloor = P('concrete_floor_worn_001', 2.5, 2.5, {}) || M.conc;
   ov('darkWood', P('wood_cabinet_worn_long', 1.0, 1.2, { color: 0xa08068 }));
+  M.rust = P('rusty_metal_02', 1.15, 1.15, { metal: 0.45, rough: 0.8, env: 0.4 }) || M.rust;
+  M.bark = P('bark_bluegum', 1.8, 1.2, { color: 0x7a6c5c, rough: 1 }) || M.bark;
   M.cabinet = P('wood_cabinet_worn_long', 1.0, 1.2, { color: 0xe4dccb }) || M.white;
   M.door = P('rough_pine_door', 1, 1, { color: 0xb09a86 });
   ov('mud', P('brown_mud_leaves_01', 3.2, 5, { rough: 0.7, env: 0.6 }));
-  M.roof = P('clay_roof_tiles', 2.0, 2.0, { color: 0x9a8a80 });
+  M.roof = P('corrugated_iron', 2.0, 2.4, { metal: 0.55, rough: 0.65, color: 0x9a9288, env: 0.5 });
   M.carpet = P('dirty_carpet', 1.4, 1.3, { color: 0x9a6a5a });
   M.trim = M.darkWood;
   M.curtain = new THREE.MeshStandardMaterial({ map: T.cloth(52, [150, 128, 100], 0.25), roughness: 0.95, side: THREE.DoubleSide, color: 0xc8b8a0 });
@@ -383,6 +385,28 @@ export function buildLevel(game) {
   model('trashbag', 13.6, 0, -0.6, 1.0, { dirty: 0.7 });
   const porchBulb = bulb(6, -1.2, 'porch', { y: 2.55, power: 0, noShade: true });
   porchBulb.dead = true;
+  // sino de vento pendurado no beiral (som: MUSCChim_WindChimes_LOOP, Meta pack)
+  (() => {
+    const cx = 12.55, cz = -2.25, top = 2.52;
+    const sinos = new THREE.Group(); sinos.position.set(cx, top, cz);
+    const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.012, 12), M.paintWood);
+    plate.position.y = -0.02; plate.castShadow = true; sinos.add(plate);
+    const strG = new THREE.CylinderGeometry(0.002, 0.002, 1, 4);
+    const clapper = new THREE.Group(); clapper.position.y = -0.16; sinos.add(clapper);
+    const clapperBall = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), M.rust); clapperBall.position.y = 0.1; clapper.add(clapperBall);
+    for (let i = 0; i < 6; i++) {
+      const an = (i / 6) * Math.PI * 2 + 0.2, rr = 0.042, len = 0.1 + (i % 3) * 0.035;
+      const st = new THREE.Mesh(strG, M.metal); st.position.set(Math.cos(an) * rr, -0.06, Math.sin(an) * rr); st.scale.y = 0.12; sinos.add(st);
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, len, 8), M.rust);
+      tube.position.set(Math.cos(an) * rr, -0.12 - len / 2, Math.sin(an) * rr); tube.castShadow = true; sinos.add(tube);
+    }
+    group.add(sinos);
+    L.updaters.push((dt, t) => {
+      const sway = Math.sin(t * 1.7) * 0.03 + Math.sin(t * 0.53 + 1.7) * 0.05 + Math.sin(t * 4.3) * 0.012;
+      sinos.rotation.x = sway * 0.7; sinos.rotation.z = sway;
+      game.audio.chimes(V(cx, top - 0.2, cz));
+    });
+  })();
 
   // ---------- SALA ----------
   if (!model('Sofa_01', 0.42, 0, 2.2, Math.PI / 2, { col: true, dirty: 0.8 })) box(0.9, 0.42, 2.1, M.fabric, 0.55, 0, 2.2, { col: true });

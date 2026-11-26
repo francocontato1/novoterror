@@ -50,7 +50,7 @@ No celular: lado esquerdo da tela anda, lado direito olha, botões à direita. N
 
 ## Como foi feito
 
-Som, iluminação, roteiro, criaturas e efeitos de câmera são gerados por código. As superfícies e os móveis usam material fotográfico escaneado de bibliotecas livres (veja **Créditos**).
+Som, iluminação, roteiro, criaturas e efeitos de câmera são gerados por código. Todas as superfícies usam material fotográfico escaneado em 2K de bibliotecas livres (parede, pisos, azulejo, papel de parede, telhado de zinco corrugado, ferrugem, casca de árvore, lama, tapete, porta), com mapas de rugosidade e normal — veja **Créditos**.
 
 - **Fotografia**: shader de câmera corporal com lente grande-angular (distorção de barril), aberração cromática, ruído de sensor que cresce no escuro, exposição automática (o ganho cai quando a lanterna bate perto de uma parede), rastro de movimento em baixa luz, e interferência eletromagnética que aumenta quando uma entidade se aproxima.
 - **Luz**: toda luz tem uma fonte física. Lanterna com padrão de refletor e sombras reais, luz rebatida que simula a iluminação indireta, faróis da viatura atravessando as janelas, relâmpagos, lâmpadas incandescentes e velas.
@@ -82,6 +82,7 @@ src/textures.js   texturas procedurais
 - **Texturas e modelos 3D**: [Poly Haven](https://polyhaven.com) e [ambientCG](https://ambientcg.com), licença CC0 (domínio público), obtidos pelo espelho [zuujis-cc0](https://github.com/zuujis-cc0).
 - **Céu noturno HDR**: "Satara Night (no lamps)", Poly Haven, CC0.
 - **Cabeça humana escaneada**: "Lee Perry-Smith head" por [Infinite-Realities](https://www.ir-ltd.net/), licença [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), distribuída com os exemplos do three.js. No jogo ela é deformada para criar os rostos das entidades.
-- **Sons gravados**: "Oculus Audio Pack 01" por Oculus VR, LLC (https://developers.meta.com/vr/downloads/package/oculus-audio-pack-1/), licença [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), via [Meta-open-sound](https://github.com/facebookincubator/Meta-open-sound). Arquivos convertidos para MP3.
+- **Sons gravados**: "Oculus Audio Pack 01" por Oculus VR, LLC (https://developers.meta.com/vr/downloads/package/oculus-audio-pack-1/), licença [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), via [Meta-open-sound](https://github.com/facebookincubator/Meta-open-sound). Arquivos convertidos para MP3. Na trilha entram, entre outros: chuva interna e externa em loop, passos em cada tipo de piso, portas, sussurros, grito/rangido de criaturas, **vento nas árvores** (com rumble sintético por baixo), **sino de vento do beiral da varanda** (posicional, balança e ao-abafa com o vento), **trem de carga distante** cruzando o vale de vez em quando (filtrado como quem está a quilômetros), respiração masculina gravada e o **arrasto pesado de madeira e metal** do pai quando ele se move sem ninguém olhando.
 - **Corpo da mãe**: modelo "female02" da Reallusion iClone, do Google 3D Warehouse, distribuído nos exemplos do three.js. Esqueleto e texturas alterados por código.
+- **Superfícies fotográficas em 2K**: [Poly Haven](https://polyhaven.com), CC0 (domínio público) — 21 conjuntos com difusão, normal e rugosidade.
 - Motor: [three.js](https://threejs.org) (MIT).
