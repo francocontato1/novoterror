@@ -3,10 +3,14 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const BASE = './assets/';
+// em telas de toque as texturas entram em 1K (memória de vídeo limitada); no desktop ficam em 2K
+const Q = new URLSearchParams(location.search).get('q') || (matchMedia('(pointer: coarse)').matches ? 'baixa' : 'alta');
+const TEXMAX = Q === 'baixa' ? 1024 : Q === 'media' ? 1536 : 2048;
 export const TEXTURES = [
   'decrepit_wallpaper', 'peeling_painted_wall', 'worn_plaster_wall', 'plastered_wall_03', 'long_white_tiles', 'interior_tiles',
   'worn_tile_floor', 'terracotta_floor_tiles', 'old_wood_floor', 'wood_floor_worn', 'concrete_floor_worn_001', 'concrete_wall_003',
-  'brown_mud_leaves_01', 'weathered_planks', 'clay_roof_tiles', 'rough_pine_door', 'wood_cabinet_worn_long', 'dirty_carpet', 'damaged_plaster',
+  'brown_mud_leaves_01', 'weathered_planks', 'rough_pine_door', 'wood_cabinet_worn_long', 'dirty_carpet', 'damaged_plaster',
+  'corrugated_iron', 'rusty_metal_02', 'bark_bluegum',
 ];
 export const MODELS = [
   'Sofa_01', 'Television_01', 'dining_table', 'dining_chair_02', 'old_bed_frame', 'ClassicNightstand_01', 'vintage_cabinet_01', 'power_box_01',
@@ -28,7 +32,9 @@ export const SFX = {
   squish: R('GORESqsh_BloodSquishSlimy', 2), impact: R('DSGNImpt_ImpactCreepyReverb', 3), strings: R('MUSCStr_StringsCreepy', 2),
   creature: R('CREAMnstr_CreatureCreepy', 3), creatureVerb: R('CREAMnstr_CreatureCreepyReverb', 3), chains: R('CHAINMvmt_ChainsCreepy', 2), clock: ['CLOCKTick_ClockCreepy_01'],
   organ: ['MUSCKeyd_PipeOrganCreepy_01'], scratch: R('METLFric_ScratchCreepy', 2), punch: ['FGHTImpt_PunchHardest_01'], woodDrop: ['WOODImpt_LargeWoodDrop_01'],
-  glass: ['GLASBrk_WindowPaneSmallBreak_01'], breathF: ['HMNBrth_FemaleBreathing_01'],
+  glass: ['GLASBrk_WindowPaneSmallBreak_01'], breathF: ['HMNBrth_FemaleBreathing_01'], breathM: ['HMNBrth_MaleBreathing_OS_01'],
+  windTrees: ['WINDVege_LightWindTreesBirds_LOOP_01'], chimes: ['MUSCChim_WindChimes_LOOP_01', 'MUSCChim_WindChimes_LOOP_02'],
+  train: ['TRNElec_TrainPassby_OS_01'], drag: ['WOODFric_LargeWoodMetalDrag_OS_01'],
 };
 
 export async function loadAssets(renderer, onProgress) {
@@ -44,7 +50,19 @@ export async function loadAssets(renderer, onProgress) {
   const U = (p) => (EMB && EMB.files[p]) || BASE + p;
   const loadModel = (p, ok, fail) => (EMB && EMB.models[p] ? gl.parse(EMB.models[p], '', ok, fail) : gl.load(BASE + p, ok, undefined, fail));
 
-  const loadTex = (url, srgb) => { total++; return new Promise((res) => tl.load(url, (t) => { t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = aniso; tick(); res(t); }, undefined, () => { tick(); res(null); })); };
+  const finishTex = (t, srgb, res) => {
+    t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = aniso; tick(); res(t);
+  };
+  const loadTex = (url, srgb) => { total++; return new Promise((res) => tl.load(url, (t) => {
+    const im = t.image;
+    if (im && Math.max(im.width, im.height) > TEXMAX && window.createImageBitmap) {
+      const k = TEXMAX / Math.max(im.width, im.height);
+      createImageBitmap(im, { resizeWidth: Math.round(im.width * k), resizeHeight: Math.round(im.height * k), resizeQuality: 'medium' })
+        .then((bm) => { t.image = bm; finishTex(t, srgb, res); })
+        .catch(() => finishTex(t, srgb, res));
+    } else finishTex(t, srgb, res);
+  }, undefined, () => { tick(); res(null); })); };
   const jobs = [];
   for (const n of TEXTURES) {
     jobs.push(Promise.all([loadTex(U(`tex/${n}/diff.jpg`), true), loadTex(U(`tex/${n}/nor_gl.jpg`), false), loadTex(U(`tex/${n}/rough.jpg`), false)])

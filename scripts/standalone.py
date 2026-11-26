@@ -5,9 +5,22 @@ html = open(f'{D}/index.html').read()
 css = open(glob.glob(f'{D}/assets/index-*.css')[0]).read()
 js = open(glob.glob(f'{D}/assets/index-*.js')[0]).read().replace('</script', '<\\/script')
 uri = lambda f: 'data:image/jpeg;base64,' + base64.b64encode(open(f, 'rb').read()).decode()
+# texturas 2K/4K são reescaladas para 1K ao embutir, para o arquivo único continuar leve
+import io
+def tex_jpeg(f, max_side=1024):
+    from PIL import Image
+    im = Image.open(f)
+    if max(im.size) > max_side:
+        k = max_side / max(im.size)
+        im = im.resize((round(im.width * k), round(im.height * k)), Image.LANCZOS)
+        b = io.BytesIO(); im.convert('RGB').save(b, 'JPEG', quality=82); return b.getvalue()
+    return open(f, 'rb').read()
 files, models = {}, {}
 for f in glob.glob(f'{D}/assets/tex/*/*.jpg') + glob.glob(f'{D}/assets/human/*.jpg') + glob.glob(f'{D}/assets/hdr/*.jpg') + glob.glob(f'{D}/assets/sfx/*.mp3'):
-    files[f[len(D) + 8:]] = uri(f).replace('image/jpeg', 'audio/mpeg') if f.endswith('.mp3') else uri(f)
+    if f.endswith('.mp3'):
+        files[f[len(D) + 8:]] = 'data:audio/mpeg;base64,' + base64.b64encode(open(f, 'rb').read()).decode()
+    else:
+        files[f[len(D) + 8:]] = 'data:image/jpeg;base64,' + base64.b64encode(tex_jpeg(f)).decode()
 for f in glob.glob(f'{D}/assets/models/*/*.json') + glob.glob(f'{D}/assets/human/*.json'):
     j = json.load(open(f)); d = os.path.dirname(f)
     for im in j.get('images', []):

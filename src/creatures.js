@@ -323,7 +323,7 @@ export class Stalker extends Creature {
         this.moveToward(G.player.pos, speed, dt);
         this.approachPose(THREE.MathUtils.clamp(1 - (d - 1) / 6, 0, 1));
         this.creakT -= dt;
-        if (this.creakT <= 0 && d < 10) { this.creakT = 0.55; A.footstep('wood', this.pos, 0.55); if (Math.random() < 0.35) A.creak(this.pos, 0.5, 0.35, 0.7); }
+        if (this.creakT <= 0 && d < 10) { this.creakT = 0.55; A.footstep('wood', this.pos, 0.55); if (Math.random() < 0.35) A.creak(this.pos, 0.5, 0.35, 0.7); else if (d > 4 && Math.random() < 0.3) A.drag(this.pos, 0.45); }
       }
       if (d < 1.15 && this.atkCD <= 0 && this.relocated <= 0) {
         this.attack(34);
