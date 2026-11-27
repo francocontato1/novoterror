@@ -56,9 +56,13 @@ export class Audio {
   async loadSamples(raw) {
     this.buf = this.buf || {};
     const jobs = [];
+    let n = 0;
     for (const [group, list] of Object.entries(raw || {})) {
       this.buf[group] = [];
-      for (const ab of list) jobs.push(this.ctx.decodeAudioData(ab.slice(0)).then((b) => this.buf[group].push(b)).catch(() => {}));
+      for (const ab of list) {
+        jobs.push(this.ctx.decodeAudioData(ab.slice(0)).then((b) => this.buf[group].push(b)).catch(() => {}));
+        if (++n % 8 === 0) await new Promise((r) => setTimeout(r, 0));
+      }
     }
     await Promise.all(jobs);
     this.startBeds();

@@ -56,6 +56,7 @@ G.ready = (async () => {
   G.player.setInput(keys);
   // compila os shaders antes de começar (evita travadas no primeiro susto)
   renderer.compile(scene, camera);
+  G.post.composer.render(1 / 60);
   document.querySelector('#loading').classList.add('hidden');
   const b = document.querySelector('#start'); b.disabled = false; b.focus();
 })();
@@ -405,12 +406,12 @@ function start() {
   const jump = params.get('step');
   const go = () => {
     G.started = true;
-    G.paused = !G.touch && !params.has('nolock') && document.pointerLockElement !== canvas;
+    G.paused = false;
+    ui.pause.classList.add('hidden');
     ui.hud.classList.remove('hidden');
     if (G.touch) $('#touch').classList.remove('hidden');
     G.startWorldLoops();
     if (jump && G.story.steps[jump]) { G.story.checkpoint = jump; G.story.restore(); } else G.story.go('arrive');
-    if (G.paused) ui.pause.classList.remove('hidden');
   };
   if (jump || params.has('skip')) go();
   else cards([

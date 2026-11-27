@@ -122,19 +122,25 @@ export class Crawler extends Creature {
     this.onCeiling = false; this.fleeTo = null; this.onFlee = null; this.skT = 0; this.retreatT = 0; this.flip = 0;
   }
   pose(t, moving) {
-    const P = this.P, ph = t * 9;
-    const a = Math.sin(ph) * moving, b = Math.sin(ph + Math.PI) * moving;
-    P.hips.position.y = 0.52 + Math.abs(Math.sin(ph)) * 0.04 * moving;
-    P.hips.rotation.set(1.42, 0, Math.sin(ph) * 0.08 * moving);
-    P.spine.rotation.set(-0.12, 0, -Math.sin(ph) * 0.1 * moving);
+    const P = this.P;
+    const p0 = t * 8.5, p1 = p0 + 2.1, p2 = p0 + 3.6, p3 = p0 + 5.4;
+    const m = 0.35 + moving * 0.65;
+    const s0 = Math.sin(p0), s1 = Math.sin(p1), s2 = Math.sin(p2), s3 = Math.sin(p3);
+    const c0 = Math.cos(p0), c2 = Math.cos(p2);
+    P.hips.position.y = 0.5 + (Math.abs(s0) + Math.abs(s2)) * 0.045 * m;
+    P.hips.rotation.set(1.42 + Math.sin(p0 * 2) * 0.05 * m, 0, Math.sin(p0 * 2) * 0.1 * m);
+    P.spine.rotation.set(-0.12 + Math.sin(p2 * 2) * 0.04 * m, 0, -Math.sin(p0 * 2) * 0.14 * m);
     P.neck.rotation.set(-0.9, 0, Math.sin(t * 13) * 0.06);
-    // no teto a cabeça gira 180° para olhar para baixo
-    P.head.rotation.set(-0.7, this.onCeiling ? Math.PI * 0.92 : 0, 0.35 + Math.sin(t * 17) * 0.05);
-    P.armL.rotation.set(-2.15 + a * 0.45, 0, -0.55); P.armR.rotation.set(-2.15 + b * 0.45, 0, 0.55);
-    P.foreL.rotation.set(0.95 - a * 0.3, 0, 0.25); P.foreR.rotation.set(0.95 - b * 0.3, 0, -0.25);
-    P.handL.rotation.set(0.8, 0, 0); P.handR.rotation.set(0.8, 0, 0);
-    P.legL.rotation.set(-0.75 + b * 0.35, 0, -1.0); P.legR.rotation.set(-0.75 + a * 0.35, 0, 1.0);
-    P.shinL.rotation.set(-1.9, 0, 0); P.shinR.rotation.set(-1.9, 0, 0);
+    P.head.rotation.set(-0.7 + Math.sin(t * 31) * 0.04, this.onCeiling ? Math.PI * 0.92 : 0, 0.35 + Math.sin(t * 17) * 0.06 + Math.sin(t * 47) * 0.03);
+    P.armL.rotation.set(-2.3 + s0 * 0.5 * m, 0.15, -0.5 + c0 * 0.22 * m);
+    P.armR.rotation.set(-2.3 + s2 * 0.5 * m, -0.15, 0.5 + c2 * 0.22 * m);
+    P.foreL.rotation.set(1.1 + Math.max(0, -s0) * 0.5 * m, 0, 0.3);
+    P.foreR.rotation.set(1.1 + Math.max(0, -s2) * 0.5 * m, 0, -0.3);
+    P.handL.rotation.set(0.85, 0, Math.sin(p0 + 1) * 0.2); P.handR.rotation.set(0.85, 0, Math.sin(p2 + 1) * 0.2);
+    P.legL.rotation.set(-0.6 + s3 * 0.4 * m, 0, -1.05 + Math.sin(p3) * 0.12);
+    P.legR.rotation.set(-0.6 + s1 * 0.4 * m, 0, 1.05 + Math.sin(p1) * 0.12);
+    P.shinL.rotation.set(-2.0 + Math.max(0, s3) * 0.45 * m, 0, 0);
+    P.shinR.rotation.set(-2.0 + Math.max(0, s1) * 0.45 * m, 0, 0);
     if (P.hair) P.hair.rotation.x = (this.onCeiling ? -1.4 : 1.2) + Math.sin(t * 2.3) * 0.07;
   }
   stunPose(t) {

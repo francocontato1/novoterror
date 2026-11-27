@@ -55,7 +55,7 @@ export class Story {
             const walk = () => {
               k += 0.016; F.root.position.x = 4.4 + k * 1.9; F.root.rotation.z = Math.sin(k * 22) * 0.03;
               if (k < 1.1) requestAnimationFrame(walk);
-              else { F.root.visible = false; A().doorClose && A().play('doorClose', V(7, 1.4, 1.9), { vol: 0.7, verb: 0.8 }); }
+              else { F.root.visible = false; A().sting && A().sting(false); A().doorClose && A().play('doorClose', V(7, 1.4, 1.9), { vol: 0.7, verb: 0.8 }); }
             };
             walk();
             this.after(1.2, () => G.say('VOCÊ', '...Tem alguém andando aí dentro.', 2.4, 'self'));
@@ -457,11 +457,13 @@ export class Story {
 
   // sustos ambientes: entre um evento e outro, a casa nunca fica confortável
   ambTick(dt) {
-    if (!['arrive', 'sala', 'phone', 'power', 'blackout', 'basement'].includes(this.cur)) return;
-    this.ambT = (this.ambT ?? 14) - dt;
+    if (!['sala', 'phone', 'power', 'blackout', 'basement'].includes(this.cur)) return;
+    const G = this.G;
+    if (G.level.insideAt(G.player.pos.x, G.player.pos.z) < 0.5) return;
+    this.ambT = (this.ambT ?? 8) - dt;
     if (this.ambT > 0) return;
-    this.ambT = 16 + Math.random() * 16;
-    const G = this.G, A = G.audio, p = G.player.pos, f = G.camera.userData.fwd;
+    this.ambT = 10 + Math.random() * 12;
+    const A = G.audio, p = G.player.pos, f = G.camera.userData.fwd;
     const behind = V(p.x - f.x * 2.6, 1.5, p.z - f.z * 2.6);
     const around = (r) => V(p.x + (Math.random() - 0.5) * r, 1.3, p.z + (Math.random() - 0.5) * r);
     switch (Math.floor(Math.random() * 6)) {

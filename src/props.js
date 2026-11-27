@@ -189,8 +189,8 @@ export function makePoliceCar(env) {
   // giroflex
   const bar = new THREE.Group(); bar.position.set(0, 1.4, -0.45); g.add(bar);
   const bb = new THREE.Mesh(new RoundedBoxGeometry(1.15, 0.1, 0.26, 3, 0.04), trim); bar.add(bb);
-  const lensR = new THREE.MeshPhysicalMaterial({ color: 0x500000, emissive: 0xff0a00, emissiveIntensity: 0, roughness: 0.15, transmission: 0.3, clearcoat: 1 });
-  const lensB = new THREE.MeshPhysicalMaterial({ color: 0x000040, emissive: 0x0030ff, emissiveIntensity: 0, roughness: 0.15, transmission: 0.3, clearcoat: 1 });
+  const lensR = new THREE.MeshStandardMaterial({ color: 0x500000, emissive: 0xff0a00, emissiveIntensity: 0, roughness: 0.15, transparent: true, opacity: 0.85, envMap: env, envMapIntensity: 0.8 });
+  const lensB = new THREE.MeshStandardMaterial({ color: 0x000040, emissive: 0x0030ff, emissiveIntensity: 0, roughness: 0.15, transparent: true, opacity: 0.85, envMap: env, envMapIntensity: 0.8 });
   const lr = new THREE.Mesh(new RoundedBoxGeometry(0.52, 0.11, 0.24, 3, 0.05), lensR); lr.position.set(-0.29, 0.04, 0); bar.add(lr);
   const lb = new THREE.Mesh(new RoundedBoxGeometry(0.52, 0.11, 0.24, 3, 0.05), lensB); lb.position.set(0.29, 0.04, 0); bar.add(lb);
   // antena

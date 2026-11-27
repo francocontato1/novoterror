@@ -147,7 +147,7 @@ export function buildLevel(game) {
     return m;
   }
   function decal(tex, w, h, x, y, z, rx, ry, o = {}) {
-    const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, depthWrite: false, roughness: o.rough ?? 0.25, polygonOffset: true, polygonOffsetFactor: -2, opacity: o.opacity ?? 1 });
+    const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, depthWrite: false, roughness: o.rough ?? 0.25, polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -8, opacity: o.opacity ?? 1 });
     const m = plane(w, h, mat, x, y, z, rx, ry, 0, o); m.renderOrder = 2;
     if (o.rz) m.rotation.z = o.rz;
     return m;
@@ -318,7 +318,7 @@ export function buildLevel(game) {
   const blueL = new THREE.PointLight(0x1040ff, 0, 12, 2); blueL.position.set(7.9, 1.75, -12.4); group.add(blueL);
   const head = new THREE.SpotLight(0xfff0d8, 220, 32, 0.42, 0.5, 1.6);
   head.position.set(7.8, 0.7, -9.9); head.target.position.set(6.2, 1.0, 2); group.add(head, head.target);
-  head.castShadow = true; head.shadow.mapSize.set(1024, 1024); head.shadow.camera.near = 0.5; head.shadow.camera.far = 30; head.shadow.bias = -0.0004;
+  head.castShadow = true; head.shadow.mapSize.set(1024, 1024); head.shadow.camera.near = 0.5; head.shadow.camera.far = 30; head.shadow.bias = -0.0012; head.shadow.normalBias = 0.05;
   const barR = { material: carObj.lensR }, barB = { material: carObj.lensB }, hlMat = carObj.hlMat;
   L.props.car = { car, redL, blueL, barR, barB, head, hlMat };
   L.updaters.push((dt, t) => {
@@ -457,7 +457,7 @@ export function buildLevel(game) {
   // retrato da avó (olhos queimados)
   const frame = A && A.models.hanging_picture_frame_01 ? A.models.hanging_picture_frame_01.clone(true) : null;
   if (frame) {
-    frame.traverse((q) => { if (q.isMesh && q.material.name && q.material.name.endsWith('artwork')) { q.material = q.material.clone(); q.material.map = T.grannyPortrait(); q.material.map.flipY = false; q.material.map.needsUpdate = true; } });
+    frame.traverse((q) => { if (q.isMesh && q.material.name && q.material.name.endsWith('artwork')) { q.material = q.material.clone(); q.material.map = T.grannyPortrait(); q.material.map.flipY = false; q.material.map.needsUpdate = true; q.material.polygonOffset = true; q.material.polygonOffsetFactor = -6; q.material.polygonOffsetUnits = -6; } });
     frame.position.set(0.078, 1.72, 4.6); frame.rotation.y = Math.PI / 2; frame.scale.setScalar(0.82); group.add(frame);
   } else {
     const gp = plane(0.5, 0.65, new THREE.MeshStandardMaterial({ map: T.grannyPortrait(), roughness: 0.4 }), 0.115, 1.75, 4.6, 0, Math.PI / 2, 0);
@@ -527,7 +527,7 @@ export function buildLevel(game) {
   plane(14, 0.9, M.carpet || std(T.cloth(45, [90, 30, 30], 0.2), { bump: false }), 8, 0.004, 7, -Math.PI / 2, 0, 1.2);
   const photoSpots = [4.8, 5.8, 9.6, 10.6, 14.2];
   photoSpots.forEach((px, i) => {
-    plane(0.32, 0.26, new THREE.MeshStandardMaterial({ map: T.familyPhoto(5 + i, 3 + (i % 2), true, i % 2 === 0), roughness: 0.4 }), px, 1.55 + (i % 2) * 0.12, 7.91, 0, Math.PI, 0);
+    plane(0.32, 0.26, new THREE.MeshStandardMaterial({ map: T.familyPhoto(5 + i, 3 + (i % 2), true, i % 2 === 0), roughness: 0.4, polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -8, depthWrite: false }), px, 1.55 + (i % 2) * 0.12, 7.904, 0, Math.PI, 0);
     box(0.36, 0.3, 0.02, M.darkWood, px, 1.40 + (i % 2) * 0.12, 7.92);
   });
   // oratório da avó
@@ -732,7 +732,7 @@ export function buildLevel(game) {
       }`,
   });
   const flameGeo = new THREE.PlaneGeometry(1.0, 1.35); flameGeo.translate(0, 0.675, 0);
-  const flame = new THREE.Mesh(flameGeo, flameMat); flame.position.set(27.35, BY + 0.9, 6); flame.frustumCulled = false; fireG.add(flame);
+  const flame = new THREE.Mesh(flameGeo, fireShaderMat); flame.position.set(27.35, BY + 0.9, 6); flame.frustumCulled = false; fireG.add(flame);
   const fireMat = new THREE.SpriteMaterial({ map: T.softDot(), color: 0xffa030, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
   const smokeMat = new THREE.SpriteMaterial({ map: T.softDot(), color: 0x35322e, transparent: true, opacity: 0, depthWrite: false });
   const fireSprites = [];
@@ -743,7 +743,7 @@ export function buildLevel(game) {
   L.updaters.push((dt, t) => {
     const F = L.props.fire; if (!fireG.visible) { fireL.intensity = 0; return; }
     const k = F.level;
-    fireShaderMat.uniforms.t.value = t; flameMat.uniforms.k.value = k;
+    fireShaderMat.uniforms.t.value = t; fireShaderMat.uniforms.k.value = k;
     flame.scale.set(0.45 + k * 0.85, 0.4 + k * 1.15, 1);
     flame.rotation.y = Math.atan2(game.camera.position.x - flame.position.x, game.camera.position.z - flame.position.z);
     for (const p of fireSprites) {
