@@ -38,9 +38,29 @@ export class Story {
         this.after(13.5, () => G.say('SD SILVA', 'Vou ficar aqui na viatura esperando o reforço. Qualquer coisa, chama.', 4, 'radio'));
         this.after(26, () => { if (this.cur === 'arrive') { A().thunder(0.7); G.lightning(); } });
       },
-      update: () => {
+      update: (dt) => {
         const p = P().pos;
         if (!this.flags.calledOut && p.z > -3) { this.flags.calledOut = true; G.say('VOCÊ', 'Polícia Militar! Dona Lúcia? Seu Antônio?', 2.8, 'self'); this.after(3.2, () => A().creak(V(4, 2.6, 3), 1.2, 0.6, 0.7)); }
+        // susto 1: uma silhueta atravessa o corredor, atrás da porta entreaberta
+        if (!this.flags.passer && p.z < -5.4 && p.z > -8.5) {
+          this.flags.passer = true;
+          this.after(2 + Math.random() * 2, () => {
+            if (this.cur !== 'arrive') return;
+            const F = this.passFig || (this.passFig = buildHumanoid(G.cmats, { h: 1.8, thin: 0.9, skin: G.cmats.ghost, top: G.cmats.ghost, bottom: G.cmats.ghost }));
+            G.scene.add(F.root); F.root.visible = true;
+            F.root.position.set(4.4, 0, 1.9); F.root.rotation.y = -Math.PI / 2; F.spine.rotation.x = 0.1;
+            F.legL.rotation.x = 0; F.legR.rotation.x = 0;
+            A().footstep('wood', V(4.4, 0.05, 1.9), 0.5);
+            let k = 0;
+            const walk = () => {
+              k += 0.016; F.root.position.x = 4.4 + k * 1.9; F.root.rotation.z = Math.sin(k * 22) * 0.03;
+              if (k < 1.1) requestAnimationFrame(walk);
+              else { F.root.visible = false; A().doorClose && A().play('doorClose', V(7, 1.4, 1.9), { vol: 0.7, verb: 0.8 }); }
+            };
+            walk();
+            this.after(1.2, () => G.say('VOCÊ', '...Tem alguém andando aí dentro.', 2.4, 'self'));
+          });
+        }
         if (L().room(p.x, p.z) === 'sala') this.go('sala');
       },
     };
@@ -52,6 +72,19 @@ export class Story {
         G.tensionBase = 0.12;
         this.after(2.5, () => G.say('VOCÊ', 'Meu Deus... que cheiro é esse.', 2.6, 'self'));
         this.after(25, () => { if (!this.flags.needPower) { G.objective('Encontrar o quadro de luz'); this.flags.needPower = true; } });
+        // susto 2: a TV estoura num estalo e morre... e volta sozinha, chiando mais alto
+        this.after(9, () => {
+          if (this.cur !== 'sala') return;
+          const tv = L().props.tv;
+          tv.on = false; tv.tvLight.intensity = 0;
+          A().noiseBurst(A().dest(V(3.1, 0.8, 2.2)), { dur: 0.25, f: 2600, q: 3, peak: 0.9 });
+          A().tone(A().dest(V(3.1, 0.8, 2.2)), { f: 90, fEnd: 40, dur: 0.3, peak: 0.8 });
+          G.flickerT = 0.4;
+          this.after(2.4, () => {
+            if (this.cur !== 'sala') return;
+            tv.on = true; A().whisper(V(3.1, 1.6, 2.2), 1.6, 0.8); A().sting(false);
+          });
+        });
       },
       update: () => {},
     };
@@ -200,8 +233,22 @@ export class Story {
         this.after(6.8, () => G.say('SD SILVA', 'Sai dessa casa. Agora.', 2.2, 'radio'));
         this.flags.doorSlammed = false;
       },
-      update: () => {
+      update: (dt) => {
         const p = P().pos;
+        // susto 3: as lâmpadas vão queimando, uma a uma, com estalo de vidro
+        if (this.flags.doorSlammed) {
+          this.popT = (this.popT ?? 10) - dt;
+          if (this.popT <= 0) {
+            this.popT = 7 + Math.random() * 8;
+            const alive = L().bulbs.filter((b) => !b.dead);
+            if (alive.length > 2) {
+              const b = alive[Math.floor(Math.random() * alive.length)];
+              b.dead = true; G.flickerBulbs(0.7);
+              A().noiseBurst(A().dest(b.pos), { dur: 0.12, f: 3400, q: 4, peak: 0.7 });
+              A().tone(A().dest(b.pos), { f: 300, fEnd: 90, dur: 0.15, peak: 0.4 });
+            }
+          }
+        }
         if (!this.flags.doorSlammed && p.z < 2.2 && p.z > 0 && p.x > 4.3 && p.x < 7.6) {
           this.flags.doorSlammed = true;
           const D = L().props.doors.front; D.slam(); D.locked = true; D.lockLabel = 'Não abre';
@@ -398,6 +445,7 @@ export class Story {
     }
     const S = this.steps[this.cur]; if (S && S.update) S.update(dt);
     this.updateScare(dt);
+    this.ambTick(dt);
     // Clara sendo puxada
     if (this.clara && this.clara.yank) {
       this.clara.yank += dt;
@@ -407,6 +455,24 @@ export class Story {
     }
   }
 
+  // sustos ambientes: entre um evento e outro, a casa nunca fica confortável
+  ambTick(dt) {
+    if (!['arrive', 'sala', 'phone', 'power', 'blackout', 'basement'].includes(this.cur)) return;
+    this.ambT = (this.ambT ?? 14) - dt;
+    if (this.ambT > 0) return;
+    this.ambT = 16 + Math.random() * 16;
+    const G = this.G, A = G.audio, p = G.player.pos, f = G.camera.userData.fwd;
+    const behind = V(p.x - f.x * 2.6, 1.5, p.z - f.z * 2.6);
+    const around = (r) => V(p.x + (Math.random() - 0.5) * r, 1.3, p.z + (Math.random() - 0.5) * r);
+    switch (Math.floor(Math.random() * 6)) {
+      case 0: A.whisper(behind, 2.2, 0.7); break;
+      case 1: A.knock(around(4), 2 + Math.floor(Math.random() * 2)); break;
+      case 2: A.skitter(V(p.x + (Math.random() - 0.5) * 3, 2.6, p.z + (Math.random() - 0.5) * 3), 0.9, 0.8); G.ceilingDust(p.x + (Math.random() - 0.5) * 2, p.z + (Math.random() - 0.5) * 2, 22); break;
+      case 3: A.creak(around(5), 1.4, 0.6, 0.8); break;
+      case 4: A.scream(V(p.x - f.x * 9, 1.2, p.z - f.z * 9), { pitch: 1.6, dur: 0.5, vol: 0.3 }); break;
+      case 5: A.boneCrack(behind, 2); break;
+    }
+  }
   placeFather() {
     const F = this.G.father;
     this.headTurn = undefined; this.knockAnim = undefined; this.flags.fatherTurned = false; this.flags.turnCrack = false;

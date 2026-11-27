@@ -130,7 +130,7 @@ export function makePoliceCar(env) {
   const g = new THREE.Group();
   const paint = new THREE.MeshPhysicalMaterial({ map: carPaintTex(), color: 0xf2f2ee, roughness: 0.32, metalness: 0.15, clearcoat: 1, clearcoatRoughness: 0.08, envMap: env, envMapIntensity: 1.2 });
   const trim = new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.55, envMap: env, envMapIntensity: 0.4 });
-  const glass = new THREE.MeshPhysicalMaterial({ color: 0x0a0d10, roughness: 0.03, metalness: 0.2, clearcoat: 1, envMap: env, envMapIntensity: 1.6 });
+  const glass = new THREE.MeshPhysicalMaterial({ color: 0x0a0d10, roughness: 0.08, metalness: 0.2, clearcoat: 1, envMap: env, envMapIntensity: 0.9, polygonOffset: true, polygonOffsetFactor: -1 });
   const chrome = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.15, metalness: 1, envMap: env });
   const L = 3.9, Wd = 1.64;
   // silhueta lateral de hatch compacto (z = comprimento, y = altura)
@@ -155,9 +155,9 @@ export function makePoliceCar(env) {
   const body = new THREE.Mesh(geo, paint); body.castShadow = body.receiveShadow = true; g.add(body);
   // janelas (cópia levemente inflada da estufa, só a parte de cima)
   const wgeo = geo.clone(); const wp = wgeo.attributes.position;
-  for (let i = 0; i < wp.count; i++) { const y = wp.getY(i); if (y < 0.9) wp.setY(i, 0.9); wp.setX(i, wp.getX(i) * 1.006); }
+  for (let i = 0; i < wp.count; i++) { const y = wp.getY(i); if (y < 0.9) wp.setY(i, 0.9); wp.setX(i, wp.getX(i) * 1.02); }
   wgeo.computeVertexNormals();
-  const win = new THREE.Mesh(wgeo, glass); win.scale.set(1, 1, 1); win.position.y = 0.005; g.add(win);
+  const win = new THREE.Mesh(wgeo, glass); win.scale.set(1, 1, 1); win.position.y = 0.012; g.add(win);
   // colunas (pilares) e faixa preta das portas
   for (const z of [0.0, -0.75]) for (const sx of [-1, 1]) { const pil = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.42, 0.07), paint); pil.position.set(sx * 0.73, 1.12, z - 0.1); pil.rotation.z = sx * 0.16; g.add(pil); }
   // para-choques
@@ -218,9 +218,9 @@ export function carDecals(car, env) {
     x.fillText('POLÍCIA MILITAR', w / 2, h / 2 + 4);
   });
   const num = canvasTex(256, 128, (x, w, h) => { x.fillStyle = '#16324f'; x.font = 'bold 90px Arial'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('2207', w / 2, h / 2); });
-  const mk = (t, w, h) => new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshPhysicalMaterial({ map: t, transparent: true, roughness: 0.3, clearcoat: 1, envMap: env, polygonOffset: true, polygonOffsetFactor: -2 }));
+  const mk = (t, w, h) => new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshPhysicalMaterial({ map: t, transparent: true, roughness: 0.3, clearcoat: 1, envMap: env, polygonOffset: true, polygonOffsetFactor: -6, depthWrite: false }));
   for (const sx of [-1, 1]) {
-    const d = mk(tex, 1.5, 0.23); d.position.set(sx * 0.885, 0.7, -0.1); d.rotation.y = sx * Math.PI / 2; car.add(d);
-    const n = mk(num, 0.4, 0.2); n.position.set(sx * 0.86, 1.18, -1.15); n.rotation.y = sx * Math.PI / 2; car.add(n);
+    const d = mk(tex, 1.5, 0.23); d.position.set(sx * 0.828, 0.7, -0.1); d.rotation.y = sx * Math.PI / 2; car.add(d);
+    const n = mk(num, 0.4, 0.2); n.position.set(sx * 0.828, 1.18, -1.15); n.rotation.y = sx * Math.PI / 2; car.add(n);
   }
 }

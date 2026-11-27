@@ -127,13 +127,19 @@ G.spawnBlood = (point, normal, color = 0x5a0000) => {
   const fy = G.level.floorY(point.x, point.z);
   placeDecal(T.bloodSplat(Math.floor(Math.random() * 30), 'splat'), 0.5 + Math.random() * 0.4, V(point.x + (Math.random() - 0.5) * 0.4, fy + 0.008, point.z + (Math.random() - 0.5) * 0.4), V(0, 1, 0), { rough: 0.2, color: color === 0x5a0000 ? 0xffffff : 0x222222 });
 };
-// pó caindo do forro
+// pó caindo do forro: dispersão radial, lascas maiores e uma nuvem que expande
 G.ceilingDust = (x, z, n = 40) => {
   for (let i = 0; i < n; i++) {
-    const sp = new THREE.Sprite(sparkMat.clone()); sp.material.color.set(0x8a8070); sp.material.opacity = 0.6; sp.scale.setScalar(0.012 + Math.random() * 0.02);
-    sp.position.set(x + (Math.random() - 0.5) * 0.6, 2.66, z + (Math.random() - 0.5) * 0.6); scene.add(sp);
-    particles.push({ s: sp, v: V((Math.random() - 0.5) * 0.1, -0.2 - Math.random() * 0.6, (Math.random() - 0.5) * 0.1), life: 2.5 + Math.random() * 2, g: 0.08 });
+    const big = Math.random() < 0.18;
+    const sp = new THREE.Sprite(sparkMat.clone()); sp.material.color.set(big ? 0x9a9080 : 0x8a8070); sp.material.opacity = big ? 0.7 : 0.5;
+    sp.scale.setScalar(big ? 0.03 + Math.random() * 0.04 : 0.014 + Math.random() * 0.022);
+    const a = Math.random() * 6.28, rr = Math.random() * 0.55;
+    sp.position.set(x + Math.cos(a) * rr, 2.66 - Math.random() * 0.06, z + Math.sin(a) * rr); scene.add(sp);
+    particles.push({ s: sp, v: V(Math.cos(a) * (0.1 + Math.random() * 0.3), -0.25 - Math.random() * 0.55, Math.sin(a) * (0.1 + Math.random() * 0.3)), life: 1.8 + Math.random() * 2.2, g: big ? 0.55 : 0.15 });
   }
+  const puff = new THREE.Sprite(sparkMat.clone()); puff.material.color.set(0x8a8272); puff.material.opacity = 0.26;
+  puff.scale.setScalar(0.35); puff.position.set(x, 2.58, z); scene.add(puff);
+  particles.push({ s: puff, v: V(0, -0.12, 0), life: 1.1, g: 0, grow: 1.6 });
   G.audio.noiseBurst(G.audio.dest(V(x, 2.6, z)), { dur: 0.6, type: 'highpass', f: 3000, peak: 0.12, buf: G.audio.pink });
 };
 // uma gota de sangue cai do teto ao seu lado
@@ -364,7 +370,7 @@ G.endingFigures = () => {
   mk(11.2, 0.75, { h: 1.75 });
   // e alguém de uniforme na porta
   mk(5.9, 0.4, { h: 1.68, hair: true, hairLen: 0.25 });
-  const C = mk(5.9, 1.6, { h: 3.0, thin: 0.6, armK: 1.75, faceless: true, longHead: 1.9, longNeck: 1.9 });
+  const C = mk(5.9, 1.6, { h: 2.1, thin: 0.6, armK: 1.75, faceless: true, longHead: 1.6, longNeck: 1.6 });
   G.level.props.doors.front.set(1, true);
 };
 G.finish = () => {
@@ -394,8 +400,8 @@ function start() {
   G.audio.init(); if (G.audio.master) G.audio.master.gain.value = 0.9 * G.volume;
   if (G.assets.sfxRaw && !G.samplesLoading) { G.samplesLoading = true; G.audio.loadSamples(G.assets.sfxRaw); }
   ui.title.classList.add('hidden');
-  if (wantFull && !params.has('nolock')) enterFS();
-  lock();
+  if (wantFull && !params.has('nolock')) { enterFS(); setTimeout(lock, 380); }
+  else lock();
   const jump = params.get('step');
   const go = () => {
     G.started = true;
@@ -425,10 +431,12 @@ function frame() {
   if (params.has('fixeddt')) dt = 1 / 30;
   dt *= Number(params.get('speed') || 1);
   const running = G.started && !G.paused && !G.noteOpen;
-  if (running) step(dt); else if (!G.started) idleRender(dt);
+  if (running) step(dt);
+  else if (!G.started) idleRender(dt);
+  else if (G.player) G.player.syncCam();
   if (G.started) renderFrame(dt);
 }
-function idleRender(dt) { G.time += dt; }
+function idleRender(dt) { G.time += dt; if (G.player) G.player.syncCam(); }
 function step(dt) {
   G.time += dt; G.dt = dt;
   const P = G.player, L = G.level, A = G.audio, u = G.post.u;
@@ -443,13 +451,13 @@ function step(dt) {
     if (o.userData.revealT > 0) { o.userData.revealT -= dt; o.visible = o.userData.revealT > 0; } else o.visible = false;
   }
 
-  // proximidade das entidades => interferência, tensão, lanterna falhando
+  // proximidade das entidades => interferência, tensão, lanterna falhando (sutil: susto é evento, não pano de fundo)
   let near = 99;
   for (const c of G.creatures) if (c.active && c.state !== 'idle' && c.state !== 'hidden' && c.state !== 'die') near = Math.min(near, c.pos.distanceTo(P.pos));
   const prox = THREE.MathUtils.clamp(1 - near / 4.5, 0, 1);
   G.combat = G.creatures.some(c => c.active && ['chase', 'hunt', 'drop', 'emerge', 'flee'].includes(c.state) && c.pos.distanceTo(P.pos) < 14) || (G.mother.state === 'ceiling' && G.mother.active);
   G.flickerT = Math.max(0, G.flickerT - dt);
-  G.flicker = (prox > 0.5 && Math.random() < prox * dt * 1.5) ? 0.15 : Math.max(0, G.flicker - dt);
+  G.flicker = (prox > 0.75 && Math.random() < prox * dt * 0.8) ? 0.12 : Math.max(0, G.flicker - dt);
   if (G.flickerT > 0) G.flicker = 0.2;
   if (G.scareFx > 0.5) G.flicker = 0.3;
   const PL = G.player; if (G.scareExposure) PL.flashlight.intensity *= 0.5;
@@ -480,7 +488,7 @@ function step(dt) {
   u.grain.value = 0.045 + (G.exposure - 0.9) * 0.05;
   u.flash.value = Math.max(0, G.flashT / 0.18) * 0.85;
   u.damage.value = P.damageFx;
-  u.interference.value = G.scareExposure ? G.scareFx : Math.max(prox * prox * 0.3, P.dead ? 0.8 : 0, G.flickerT > 0 ? 0.2 : 0, G.scareFx * 0.9);
+  u.interference.value = G.scareExposure ? G.scareFx : Math.max(near < 2.5 ? (2.5 - near) * 0.09 : 0, P.dead ? 0.8 : 0, G.flickerT > 0 ? 0.2 : 0, G.scareFx * 0.9);
   scene.environmentIntensity = inside > 0.5 ? (G.lightsOn ? 0.35 : 0.12) : 0.5;
   u.saturation.value = G.lightsOn ? 0.8 : 0.6;
   hemi.intensity = inside > 0.5 ? 0.12 : 0.3;
@@ -504,6 +512,7 @@ function step(dt) {
   // partículas
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i]; p.life -= dt; p.v.y -= 9.8 * (p.g ?? 1) * dt; p.s.position.addScaledVector(p.v, dt);
+    if (p.grow) { const s2 = p.s.scale.x + p.grow * dt; p.s.scale.set(s2, s2, 1); }
     p.s.material.opacity = Math.min(p.s.material.opacity, Math.max(0, p.life * 2));
     if (p.life <= 0) { scene.remove(p.s); p.s.material.dispose(); particles.splice(i, 1); }
   }

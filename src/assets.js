@@ -3,9 +3,11 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const BASE = './assets/';
-// em telas de toque as texturas entram em 1K (memória de vídeo limitada); no desktop ficam em 2K
-const Q = new URLSearchParams(location.search).get('q') || (matchMedia('(pointer: coarse)').matches ? 'baixa' : 'alta');
+// texturas entram em 1K por padrão (carrega ~9 MB em vez de ~150 MB); ?hq puxa as versões 2K
+const QP = new URLSearchParams(location.search);
+const Q = QP.get('q') || (matchMedia('(pointer: coarse)').matches ? 'baixa' : 'alta');
 const TEXMAX = Q === 'baixa' ? 1024 : Q === 'media' ? 1536 : 2048;
+const HQ = QP.has('hq');
 export const TEXTURES = [
   'decrepit_wallpaper', 'peeling_painted_wall', 'worn_plaster_wall', 'plastered_wall_03', 'long_white_tiles', 'interior_tiles',
   'worn_tile_floor', 'terracotta_floor_tiles', 'old_wood_floor', 'wood_floor_worn', 'concrete_floor_worn_001', 'concrete_wall_003',
@@ -64,8 +66,9 @@ export async function loadAssets(renderer, onProgress) {
     } else finishTex(t, srgb, res);
   }, undefined, () => { tick(); res(null); })); };
   const jobs = [];
+  const TX = (n, m) => U(`tex/${n}/${m}${HQ ? '_2k' : ''}.jpg`);
   for (const n of TEXTURES) {
-    jobs.push(Promise.all([loadTex(U(`tex/${n}/diff.jpg`), true), loadTex(U(`tex/${n}/nor_gl.jpg`), false), loadTex(U(`tex/${n}/rough.jpg`), false)])
+    jobs.push(Promise.all([loadTex(TX(n, 'diff'), true), loadTex(TX(n, 'nor_gl'), false), loadTex(TX(n, 'rough'), false)])
       .then(([map, normalMap, roughnessMap]) => { A.tex[n] = { map, normalMap, roughnessMap }; }));
   }
   for (const n of MODELS) {

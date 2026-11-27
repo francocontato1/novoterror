@@ -497,16 +497,6 @@ export class Audio {
   // voz "humana" ininteligível por baixo das legendas (rádio, telefone, criança)
   voice(pos, dur, { pitch = 120, radio = false, child = false, demonic = false, vol = 0.6 } = {}) {
     if (!this.ctx) return;
-    if (this.buf) {
-      if (radio) {
-        const d = this.dest(pos, { verb: 0.05, gain: 0.5 }), t = this.t;
-        this.noiseBurst(d, { t, dur: 0.12, f: 2000, q: 0.5, peak: 0.4 });
-        const st = this.src(this.white); const bp = this.filt('bandpass', 1800, 0.6); const g = this.ctx.createGain(); g.gain.value = 0.035;
-        st.connect(bp); bp.connect(g); g.connect(d); st.start(t, Math.random()); st.stop(t + dur);
-        this.noiseBurst(d, { t: t + dur, dur: 0.15, f: 2000, q: 0.5, peak: 0.35 });
-      }
-      return;
-    }
     const ctx = this.ctx, t = this.t, d = this.dest(pos, { verb: radio ? 0.1 : 0.6, gain: vol, ref: 1 });
     const o = ctx.createOscillator(); o.type = 'sawtooth';
     const n = this.src(this.white); const ng = ctx.createGain(); ng.gain.value = 0.08;
@@ -537,8 +527,12 @@ export class Audio {
       o.frequency.setTargetAtTime(p0 * (0.88 + Math.random() * 0.25) * (demonic ? 0.5 : 1), t + tt, 0.03);
       env.gain.setTargetAtTime(0.7 + Math.random() * 0.3, t + tt, 0.015);
       env.gain.setTargetAtTime(0.05, t + tt + syl * 0.75, 0.02);
+      // consoante: rajada de ruído filtrado no início da sílaba
+      if (Math.random() < 0.55) this.noiseBurst(d, { t: t + tt, dur: 0.03, f: child ? 3200 : 2200 + Math.random() * 1800, q: 1.2, peak: 0.12 });
       tt += syl + (Math.random() < 0.12 ? 0.22 : 0.01);
     }
+    // entonação de fim de frase: cai no final
+    o.frequency.setTargetAtTime(p0 * (demonic ? 0.4 : 0.72), t + dur * 0.85, 0.09);
     env.gain.setTargetAtTime(0, t + dur, 0.03);
     o.start(t); o.stop(t + dur + 0.3); n.start(t, Math.random()); n.stop(t + dur + 0.3);
   }

@@ -417,10 +417,12 @@ export function buildLevel(game) {
   if (!tvM) box(0.5, 0.46, 0.58, M.plastic, 3.32, 0.5, 2.2);
   model('mantel_clock_01', 3.4, 0.5, 2.62, -Math.PI / 2);
   const tvTex = T.tvStatic();
-  const tvScreen = plane(0.36, 0.27, new THREE.MeshStandardMaterial({ map: tvTex, emissive: 0xffffff, emissiveMap: tvTex, emissiveIntensity: 1.1, roughness: 0.1 }), tvFront, tvCy, 2.2, 0, -Math.PI / 2, 0);
+  const tvScreen = plane(0.36, 0.27, new THREE.MeshStandardMaterial({ map: tvTex, emissive: 0xffffff, emissiveMap: tvTex, emissiveIntensity: 1.0, roughness: 0.1, polygonOffset: true, polygonOffsetFactor: -2 }), tvFront - 0.012, tvCy, 2.2, 0, -Math.PI / 2, 0);
+  plane(0.42, 0.33, new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.4 }), tvFront - 0.002, tvCy, 2.2, 0, -Math.PI / 2, 0);
   const tvLight = new THREE.PointLight(0xa8c0ff, 1.2, 4, 2); tvLight.position.set(tvFront - 0.3, tvCy, 2.2); group.add(tvLight);
   L.props.tv = { tvTex, tvScreen, tvLight, on: true };
-  L.updaters.push((dt, t) => { if (L.props.tv.on) { if (Math.random() < 0.5) tvTex.userData.update(t); tvLight.intensity = 0.7 + Math.random() * 0.6; } else tvLight.intensity = 0; });
+  let tvAcc = 0;
+  L.updaters.push((dt, t) => { if (L.props.tv.on) { tvAcc += dt; if (tvAcc > 1 / 30) { tvAcc = 0; tvTex.userData.update(t); } tvLight.intensity = 0.7 + Math.random() * 0.6; } else tvLight.intensity = 0; });
   // telefone de disco sobre o criado-mudo ao lado do sofá
   const stand = model('ClassicNightstand_01', 0.33, 0, 3.75, Math.PI / 2, { col: true });
   const standTop = stand ? stand.userData.box.max.y : 0.6;
@@ -699,25 +701,71 @@ export function buildLevel(game) {
   L.props.burnI = interact(V(27.1, BY + 1, 6), 'Queimar o altar', () => game.story.event('burn'), { enabled: false, hold: 2.2 });
   const diary = box(0.16, 0.04, 0.22, std(T.cloth(48, [70, 40, 30], 0.3)), 27.1, BY + 0.9, 6.6);
   L.props.diary = diary;
-  // fogo
+  // fogo: chamas de shader (fbm) em billboard + brasas + fumaça + luz viva
   const fireG = new THREE.Group(); group.add(fireG); fireG.visible = false;
-  const fireMat = new THREE.SpriteMaterial({ map: T.softDot(), color: 0xff6a20, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  const fireShaderMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    uniforms: { t: { value: 0 }, k: { value: 0 } },
+    vertexShader: `varying vec2 vUv; uniform float t, k;
+      void main(){ vUv = uv; vec3 p = position;
+        float w = (0.4 + k * 0.8) * uv.y * uv.y;
+        p.x += sin(t * 3.1 + uv.y * 5.0) * 0.09 * w + sin(t * 7.3) * 0.02 * w;
+        p.z += cos(t * 2.4 + uv.y * 6.0) * 0.07 * w;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }`,
+    fragmentShader: `varying vec2 vUv; uniform float t, k;
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
+      float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int j = 0; j < 4; j++) { v += a * noise(p); p *= 2.03; a *= 0.55; } return v; }
+      void main(){
+        vec2 uv = vUv;
+        vec2 q = vec2(uv.x * 2.0 - 1.0, uv.y);
+        q.x *= 1.0 + q.y * 1.1;
+        float n = fbm(vec2(q.x * 3.0 + sin(t * 0.7) * 0.4, uv.y * 4.5 - t * 3.4));
+        float shape = 1.0 - smoothstep(0.0, 0.8, abs(q.x) * (1.25 - n * 0.8) + uv.y * 0.95 - n * 0.4);
+        shape *= smoothstep(0.0, 0.1, uv.y);
+        float a = clamp(shape * shape * 1.7 - 0.06, 0.0, 1.0) * (0.45 + k * 0.55);
+        float core = clamp(shape * 1.6 - uv.y * 1.1, 0.0, 1.0);
+        vec3 col = mix(vec3(0.95, 0.22, 0.02), vec3(1.0, 0.55, 0.08), clamp(shape * 1.3, 0.0, 1.0));
+        col = mix(col, vec3(1.0, 0.9, 0.45), core * core);
+        gl_FragColor = vec4(col * (1.4 + core), a);
+      }`,
+  });
+  const flameGeo = new THREE.PlaneGeometry(1.0, 1.35); flameGeo.translate(0, 0.675, 0);
+  const flame = new THREE.Mesh(flameGeo, flameMat); flame.position.set(27.35, BY + 0.9, 6); flame.frustumCulled = false; fireG.add(flame);
+  const fireMat = new THREE.SpriteMaterial({ map: T.softDot(), color: 0xffa030, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  const smokeMat = new THREE.SpriteMaterial({ map: T.softDot(), color: 0x35322e, transparent: true, opacity: 0, depthWrite: false });
   const fireSprites = [];
-  for (let i = 0; i < 60; i++) { const s = new THREE.Sprite(fireMat.clone()); fireG.add(s); fireSprites.push({ s, life: Math.random() }); }
-  const fireL = new THREE.PointLight(0xff7020, 0, 14, 1.6); fireL.position.set(27, BY + 1.4, 6); group.add(fireL);
+  for (let i = 0; i < 26; i++) { const s = new THREE.Sprite(fireMat.clone()); fireG.add(s); fireSprites.push({ s, life: Math.random(), ember: true }); }
+  for (let i = 0; i < 8; i++) { const s = new THREE.Sprite(smokeMat.clone()); fireG.add(s); fireSprites.push({ s, life: Math.random(), smoke: true }); }
+  const fireL = new THREE.PointLight(0xff7020, 0, 15, 1.5); fireL.position.set(27.1, BY + 1.5, 6); fireL.castShadow = true; group.add(fireL);
   L.props.fire = { g: fireG, sprites: fireSprites, light: fireL, level: 0 };
   L.updaters.push((dt, t) => {
     const F = L.props.fire; if (!fireG.visible) { fireL.intensity = 0; return; }
     const k = F.level;
+    fireShaderMat.uniforms.t.value = t; flameMat.uniforms.k.value = k;
+    flame.scale.set(0.45 + k * 0.85, 0.4 + k * 1.15, 1);
+    flame.rotation.y = Math.atan2(game.camera.position.x - flame.position.x, game.camera.position.z - flame.position.z);
     for (const p of fireSprites) {
-      p.life += dt * (1.2 + Math.random());
-      if (p.life > 1) { p.life = 0; p.x = 27.4 + (Math.random() - 0.5) * 0.7; p.z = 6 + (Math.random() - 0.5) * 1.7 * Math.min(1, 0.3 + k); }
-      const y = BY + 0.95 + p.life * (0.4 + k * 1.3);
-      p.s.position.set(p.x + Math.sin(t * 5 + p.life * 6) * 0.05, y, p.z);
-      const sc = (0.15 + k * 0.5) * (1 - p.life * 0.7); p.s.scale.set(sc, sc * 1.6, 1);
-      p.s.material.opacity = (1 - p.life) * 0.8; p.s.material.color.setHSL(0.06 - p.life * 0.05, 1, 0.5 - p.life * 0.25);
+      p.life += dt * (p.smoke ? 0.35 : 1.1 + Math.random() * 0.8);
+      if (p.life > 1) {
+        p.life = 0;
+        p.x = 27.35 + (Math.random() - 0.5) * 0.6 * (0.5 + k);
+        p.z = 6 + (Math.random() - 0.5) * 1.5 * (0.4 + k * 0.8);
+      }
+      if (p.smoke) {
+        p.s.position.set(p.x + Math.sin(t * 0.8 + p.life * 9) * 0.25 * p.life, BY + 1.9 + p.life * (1.6 + k * 1.4), p.z);
+        const sc = 0.3 + p.life * 1.1; p.s.scale.set(sc, sc, 1);
+        p.s.material.opacity = Math.max(0, (0.5 - Math.abs(p.life - 0.3) * 0.9)) * (0.25 + k * 0.4);
+      } else {
+        p.s.position.set(p.x + Math.sin(t * 4 + p.life * 11) * 0.09, BY + 1.0 + p.life * (0.9 + k * 1.9), p.z);
+        const sc = (0.035 + k * 0.03) * (1 - p.life * 0.8); p.s.scale.set(sc, sc * (1.4 + p.life), 1);
+        p.s.material.opacity = (1 - p.life) * (0.5 + k * 0.4);
+        p.s.material.color.setHSL(0.07 - p.life * 0.045, 1, 0.55 - p.life * 0.2);
+      }
     }
-    fireL.intensity = (5 + k * 30) * (0.8 + Math.random() * 0.4);
+    const fl = 0.72 + Math.sin(t * 11.3) * 0.14 + Math.sin(t * 27.7) * 0.08 + Math.random() * 0.12;
+    fireL.intensity = (4 + k * 38) * fl;
   });
 
   // =================================================================

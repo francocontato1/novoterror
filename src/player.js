@@ -97,6 +97,17 @@ export class Player {
   }
 
   setInput(keys) { this.keys = keys; }
+  // posiciona a câmera sem rodar a simulação (usado quando o jogo pausa antes do primeiro frame)
+  syncCam() {
+    const cam = this.g.camera;
+    cam.position.set(this.pos.x, this.pos.y + this.height - 0.04, this.pos.z);
+    cam.rotation.order = 'YXZ';
+    cam.rotation.y = this.yaw; cam.rotation.x = this.pitch; cam.rotation.z = 0;
+    cam.updateMatrixWorld();
+    cam.getWorldDirection(cam.userData.fwd);
+    cam.userData.up.set(0, 1, 0).applyQuaternion(cam.quaternion);
+    this.g.gunHolder.position.copy(cam.position); this.g.gunHolder.quaternion.copy(cam.quaternion);
+  }
   look(dx, dy) {
     if (this.frozen || this.dead) return;
     const s = 0.0022 * this.g.sens;

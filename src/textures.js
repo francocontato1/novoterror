@@ -426,18 +426,22 @@ export function dirtyGlass() {
 
 // ---------- Estática de TV (dinâmica) ----------
 export function tvStatic() {
-  const W = 96, H = 72;
+  const W = 128, H = 96;
   const [c, x] = canvas(W, H);
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
-  tex.magFilter = THREE.NearestFilter;
+  tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
   const img = x.createImageData(W, H);
   tex.userData.update = (t) => {
-    const d = img.data, roll = (t * 40) % H;
+    const d = img.data, roll = (t * 42) % (H + 24) - 12;
     for (let y = 0; y < H; y++) {
-      const band = Math.abs(y - roll) < 6 ? 1.4 : 1;
+      const band = Math.abs(y - roll) < 7 ? 1.45 : 1;
+      const line = (y % 2) ? 0.8 : 1;
+      const edge = (y < 3 || y > H - 4) ? 0.3 : 1;
       for (let xx = 0; xx < W; xx++) {
-        const v = Math.random() * 200 * band, i = (y * W + xx) * 4;
-        d[i] = v; d[i + 1] = v; d[i + 2] = v * 1.05; d[i + 3] = 255;
+        let v = (Math.random() * 0.8 + Math.random() * 0.2) * 210 * band * line * edge;
+        if (xx < 2 || xx > W - 3) v *= 0.35;
+        const i = (y * W + xx) * 4;
+        d[i] = v; d[i + 1] = v; d[i + 2] = v * 1.06; d[i + 3] = 255;
       }
     }
     x.putImageData(img, 0, 0); tex.needsUpdate = true;
